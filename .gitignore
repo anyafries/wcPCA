@@ -1,0 +1,11 @@
+*__pycache__*
+.DS_Store
+
+# Data files
+application/fluxnet/data/daily.csv
+application/fluxnet/data/fluxnet_site_region_dict.csv
+application/ecosystem/data/1-1-EFPN_with_pcs_and_continents.csv
+
+# Results and figures
+*results*
+*figures*
