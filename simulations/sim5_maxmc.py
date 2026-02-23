@@ -347,6 +347,7 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
                     'seed':       seed,
                     'a':          a,
                     'b':          b,
+                    'q':          prob_source,
                     'method':     m,
                     'mean':       np.mean(env_errs[m]),
                     'worst_case': np.max(env_errs[m]),
@@ -355,6 +356,8 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
 
             # --- Missingness sweep (for Figure 2 panel 2) ---
             for q in QS:
+                if q == prob_source:
+                    continue  # already evaluated above
                 env_errs_q = {m: [] for m in right_factors}
                 for cov_t in covs_test:
                     e = eval_on_test_cov(right_factors, cov_t, q)
@@ -373,6 +376,7 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
 
     df_agg  = pd.DataFrame(agg_rows)
     df_miss = pd.DataFrame(miss_rows)
+    df_miss = pd.concat([df_miss, df_agg], ignore_index=True)
     df_agg.to_csv(results_agg,  index=False)
     df_miss.to_csv(results_miss, index=False)
     print(f"\nSaved results to {results_agg} and {results_miss}")
