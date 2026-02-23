@@ -39,7 +39,7 @@ rng = np.random.default_rng()
 #                          Constants                               #
 # ================================================================ #
 
-SEEDS               = [1,2] #list(range(1, 25))
+SEEDS               = [1,2,3] #list(range(1, 25))
 P                   = 500       # dimension
 N_ROW               = 1000      # training rows per environment
 N_ROW_TEST          = 100        # test rows per environment
@@ -47,13 +47,10 @@ RANK                = 10        # rank (shared + env-specific each rank//2)
 N_ENVS              = 5         # training environments
 N_TEST_ENVS         = 10        # extra test envs from convex hull
 NORM_CST            = 100       # matrices scaled so Tr(Sigma) = NORM_CST^2
-PROB_SOURCE         = 0.05       # source observation probability
 
 QS                  = [0.05, 0.1, 0.2, 0.5, 0.8]   # target qs for panel 3
 HETEROGENEITY_LEVELS = [(0.05, 0.1)] #, (0.1, 0.5), (0.5, 1.0), (1.0, 5.0)]
 
-RESULTS_AGG  = Path('results/sim5_agg.csv')
-RESULTS_MISS = Path('results/sim5_miss.csv')
 FIGURE_COMP  = Path('figures/sim5_comparison.png')
 FIGURE_ALL   = Path('figures/sim5_all.png')
 
@@ -181,7 +178,7 @@ def generate_missing_entries(Ms, nrow, ncol, num_e, proba=0.7):
 
 
 def generate_data(covs, proba, nrow, nenvs):
-    """Generate training matrices and missingness at PROB_SOURCE."""
+    """Generate training matrices and missingness at proba."""
     # _, _, Ms = generate_data(
     #     rank=RANK, nrow=N_ROW, num_e=N_ENVS, ncol=P,
     #     method='from-cov', population=False,
@@ -231,7 +228,7 @@ def eval_on_test_cov(right_factors, cov, proba):
 # ================================================================ #
 
 def solve_factors(covs, Ms, omega_indices, observed_entries,
-                  data_prefix, full_prefix, override):
+                  data_prefix, full_prefix, opt_tol, max_iters, override):
     """
     Compute (or load cached) right factors for PCA, minPCA, poolMC, maxMC.
 
@@ -258,9 +255,9 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
         'ncol':             P,
         'rank':             RANK,
         'verbose':          False,
-        'optTol':           1e-4,
+        'optTol':           opt_tol,
         'reruns':           1,
-        'max_iters':        100,
+        'max_iters':        max_iters,
     }
 
     # poolMC
@@ -273,6 +270,7 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
         full_prefix, args, N_ENVS, type='wc', override=override,
     )
 
+
     return {'PCA': R_pca, 'minPCA': R_minpca, 'poolMC': R_pool, 'maxMC': R_wc}
 
 
@@ -280,10 +278,11 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
 #                       Main Simulation Loop                       #
 # ================================================================ #
 
-def run_simulation(override=False):
+def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
+                   override=False):
     """
     For each (seed, het_level): solve right factors, evaluate on test envs
-    at PROB_SOURCE and at each q in QS.  Saves two CSVs.
+    at prob_source and at each q in QS.  Saves two CSVs.
     """
     agg_rows  = []
     miss_rows = []
@@ -291,22 +290,22 @@ def run_simulation(override=False):
     for seed in SEEDS:
         for het_idx, (a, b) in enumerate(HETEROGENEITY_LEVELS):
             print(f"\nSeed {seed}, heterogeneity a={a}, b={b}")
-            data_prefix = f'results/sim5_s{seed}_h{het_idx}'
-            full_prefix = f'results/sim5_s{seed}_h{het_idx}_src{int(PROB_SOURCE * 100)}'
+            data_prefix = f'results/sim5/s{seed}_h{het_idx}'
+            full_prefix = f'results/sim5/s{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{opt_tol}_mi{max_iters}'
 
             covs, covs_test = make_covs(seed, a, b)
             Ms, omega_indices, observed_entries = generate_data(
-                covs, PROB_SOURCE, N_ROW, N_ENVS)
+                covs, prob_source, N_ROW, N_ENVS)
 
             right_factors = solve_factors(
                 covs, Ms, omega_indices, observed_entries,
-                data_prefix, full_prefix, override,
+                data_prefix, full_prefix, opt_tol, max_iters, override,
             )
 
-            # --- Aggregate evaluation at PROB_SOURCE (for Figures 1 and 2 panels 0-1) ---
+            # --- Aggregate evaluation at prob_source (for Figures 1 and 2 panels 0-1) ---
             env_errs = {m: [] for m in right_factors}
             for cov_t in covs_test:
-                e = eval_on_test_cov(right_factors, cov_t, PROB_SOURCE)
+                e = eval_on_test_cov(right_factors, cov_t, prob_source)
                 for m in right_factors:
                     env_errs[m].append(e[m])
             for m in right_factors:
@@ -340,9 +339,9 @@ def run_simulation(override=False):
 
     df_agg  = pd.DataFrame(agg_rows)
     df_miss = pd.DataFrame(miss_rows)
-    df_agg.to_csv(RESULTS_AGG,  index=False)
-    df_miss.to_csv(RESULTS_MISS, index=False)
-    print(f"\nSaved results to {RESULTS_AGG} and {RESULTS_MISS}")
+    df_agg.to_csv(results_agg,  index=False)
+    df_miss.to_csv(results_miss, index=False)
+    print(f"\nSaved results to {results_agg} and {results_miss}")
     return df_agg, df_miss
 
 
@@ -422,17 +421,17 @@ def comparison_plot_green_red(df, title='', maxmc=False, ax=None, s=10,
 #                           Figures                                #
 # ================================================================ #
 
-def make_figure1(df_agg):
+def make_figure1(df_agg, prob_source):
     """2-panel scatter figure comparing minPCA vs PCA and maxMC vs poolMC."""
     fig, ax = plt.subplots(1, 2, figsize=(4, 2), sharey=True)
     comparison_plot_green_red(
         df_agg,
-        title=r'$q_\textrm{source}=1,\ q_\textrm{target}=0.1$',
+        title=rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_source}$',
         ax=ax[0], s=10,
     )
     comparison_plot_green_red(
         df_agg,
-        title=r'$q_\textrm{source}=0.1,\ q_\textrm{target}=0.1$',
+        title=rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_source}$',
         maxmc=True, ax=ax[1], s=10, ylabel='',
     )
     plt.tight_layout()
@@ -441,7 +440,7 @@ def make_figure1(df_agg):
     print(f"Saved {FIGURE_COMP}")
 
 
-def make_figure2(df_agg, df_miss):
+def make_figure2(df_agg, df_miss, prob_source):
     """
     3-panel figure:
       Panel 0 — scatter: minPCA vs PCA (same data as figure 1)
@@ -471,16 +470,16 @@ def make_figure2(df_agg, df_miss):
     # Panel 0: minPCA vs PCA
     comparison_plot_green_red(
         df_agg,
-        title='Fully observed source,\n'
-              r'$q_\textrm{source}=1,\ q_\textrm{target}=0.1$',
+        title=f'Fully observed source,\n'
+              rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_source}$',
         ax=ax[0], s=5, ylabel=r'$\Delta$ RCS error',
     )
 
     # Panel 1: maxMC vs poolMC
     comparison_plot_green_red(
         df_agg,
-        title='Partially observed source,\n'
-              r'$q_\textrm{source}=0.1,\ q_\textrm{target}=0.1$',
+        title=f'Partially observed source,\n'
+              rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_source}$',
         maxmc=True, ax=ax[1], s=5, ylabel='',
     )
 
@@ -492,8 +491,8 @@ def make_figure2(df_agg, df_miss):
     ax[2].axhline(0, color='black', linestyle='--', linewidth=0.5)
     ax[2].set_xlabel(r'$q_\textrm{target}$')
     ax[2].set_title(
-        'Partially observed source,\n'
-        r'$q_\textrm{source}=0.1$, varying $q_\textrm{target}$'
+        f'Partially observed source,\n'
+        rf'$q_\textrm{{source}}={prob_source}$, varying $q_\textrm{{target}}$'
     )
     ax[2].set_ylabel(r'$\Delta$ worst-case RCS error')
     ax[2].yaxis.get_label().set_visible(True)
@@ -509,7 +508,6 @@ def make_figure2(df_agg, df_miss):
         rotation=90, va='top', ha='left', fontsize=8,
     )
 
-    plt.tight_layout()
     plt.savefig(FIGURE_ALL, dpi=600, bbox_inches='tight')
     plt.close()
     print(f"Saved {FIGURE_ALL}")
@@ -527,22 +525,45 @@ def main():
         '--rerun', action='store_true',
         help='Rerun full simulation even if cached results exist',
     )
+    parser.add_argument(
+        "--prob_source", type=float, default=0.1,
+        help="Source observation probability (default: 0.1)",
+    )
+    parser.add_argument(
+        "--opt_tol", type=float, default=1e-4,
+        help="Optimization tolerance for poolMC and maxMC (default: 1e-4)",
+    )
+    parser.add_argument(
+        "--max_iters", type=int, default=50,
+        help="Maximum iterations for poolMC and maxMC (default: 50)",
+    )
     args = parser.parse_args()
+    prob_source = args.prob_source
+    opt_tol = args.opt_tol
+    max_iters = args.max_iters
 
     Path('results').mkdir(exist_ok=True)
+    Path('results/sim5').mkdir(exist_ok=True)
     Path('figures').mkdir(exist_ok=True)
 
     plt.style.use('../../jmlr.mplstyle')
 
-    if args.rerun or not (RESULTS_AGG.exists() and RESULTS_MISS.exists()):
-        df_agg, df_miss = run_simulation(override=args.rerun)
-    else:
-        print(f'Loading cached results from {RESULTS_AGG} and {RESULTS_MISS}')
-        df_agg  = pd.read_csv(RESULTS_AGG)
-        df_miss = pd.read_csv(RESULTS_MISS)
+    file_suffix = f'src{int(prob_source * 100)}_opt{opt_tol}_mi{max_iters}'
+    results_agg  = Path(f'results/sim5/agg_{file_suffix}.csv')
+    results_miss = Path(f'results/sim5/miss_{file_suffix}.csv')
 
-    make_figure1(df_agg)
-    make_figure2(df_agg, df_miss)
+    if args.rerun or not (results_agg.exists() and results_miss.exists()):
+        df_agg, df_miss = run_simulation(
+            prob_source, opt_tol, max_iters, results_agg, results_miss,
+            override=args.rerun,
+        )
+    else:
+        print(f'Loading cached results from {results_agg} and {results_miss}')
+        df_agg  = pd.read_csv(results_agg)
+        df_miss = pd.read_csv(results_miss)
+
+    make_figure1(df_agg, prob_source)
+    make_figure2(df_agg, df_miss, prob_source)
 
 
 if __name__ == '__main__':
