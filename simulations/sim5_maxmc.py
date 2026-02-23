@@ -28,6 +28,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 
+from fancyimpute import MatrixFactorization, BiScaler
 from minPCA.minpca import minPCA 
 
 from solve_mc import altMinSense, get_Mhat_from_right_factor, pca
@@ -38,6 +39,8 @@ rng = np.random.default_rng()
 # ================================================================ #
 #                          Constants                               #
 # ================================================================ #
+FANCYIMPUTE = True
+
 
 SEEDS               = [1,2,3] #list(range(1, 25))
 P                   = 500       # dimension
@@ -60,16 +63,47 @@ FIGURE_ALL   = Path('figures/sim5_all.png')
 
 def load_solution(file_prefix, args, envs, type='pool', override=False,
                   UV=False):
-    file = f"{file_prefix}_{type}.npz"
+    if FANCYIMPUTE and type == 'pool':
+        file = f'{file_prefix}_pool_fancyimpute.npz'
+        
+    else:
+        file = f"{file_prefix}_{type}.npz"
+
     if os.path.exists(file) and not override:
         print(f"\t(Loading results from {file})")
         data = np.load(file)
         Us = [data[f'Us_{i}'] for i in range(envs)]
         V = data['V']
     else:
-        print(f"\t(Computing results)")
+        print(f"\t(Computing {type}MC solution)")
         if type == 'pool':
-            Us, V = altMinSense(type='pool', **args)
+            if not FANCYIMPUTE:
+                Us, V = altMinSense(type='pool', **args)
+            else: 
+                # make args[nrow] x args[ncol] matrix with NaNs
+                X_missing = [np.full((args['nrow'], args['ncol']), np.nan) for _ in range(envs)]
+                for e in range(envs):
+                    X_missing[e][args['omega_indices'][e]] = args['observed_entries'][e]
+                X_missing = np.concatenate(X_missing, axis=0)
+                print("\t(Fitting BiScaler)")
+                biscaler = BiScaler(verbose=args['verbose'])
+                X_incomplete_normalized = biscaler.fit_transform(X_missing)
+                print("\t(Fitting MatrixFactorization)")
+                X_filled_normalized = MatrixFactorization(
+                    rank=args['rank'], 
+                    max_iters=args['max_iters'], 
+                    verbose=True, #args['verbose'],
+                    # learning_rate=0.0001,
+                    shrinkage_value=0,
+                ).fit_transform(X_incomplete_normalized)
+                X_filled = biscaler.inverse_transform(X_filled_normalized)
+                U, S, Vt = np.linalg.svd(X_filled_normalized, full_matrices=False)
+                left_factor = U[:, :args['rank']] @ np.diag(S[:args['rank']])
+                Us = [U[e*args['nrow']:(e+1)*args['nrow'], :args['rank']] 
+                      for e in range(envs)]
+                V = Vt[:args['rank'], :].T
+
+
         elif type == 'wc':
             Us, V = altMinSense(type='wc', outerr='wc', **args)
         print(f"\t(Saving results to {file})")
@@ -94,7 +128,7 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs, envs, omega_indi
         data_r = np.load(file_r)
         r = data_r['r']
     else:
-        print(f"\t(Computing results)")
+        print(f"\t(Computing minPCA right factor)")
         minpca = minPCA(n_components=rtest, function='minpca', norm=False)
         minpca.fit(covs, n_restarts=10, n_iters=1000)
         r = minpca.components() #.reshape(-1, rtest)
@@ -108,7 +142,7 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs, envs, omega_indi
         data_m = np.load(file_m)
         Mhats = [data_m[f'Mhat_{i}'] for i in range(envs)]
     else:
-        print(f"\t(Computing results)")
+        print(f"\t(Computing minPCA Mhats)")
         Mhats = get_Mhat_from_right_factor(r, omega_indices, Ms)
         print(f"\t(Saving results to {file_m})")
         np.savez(file_m, **{f'Mhat_{i}': Mhats[i] for i in range(envs)})
@@ -291,7 +325,7 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
         for het_idx, (a, b) in enumerate(HETEROGENEITY_LEVELS):
             print(f"\nSeed {seed}, heterogeneity a={a}, b={b}")
             data_prefix = f'results/sim5/s{seed}_h{het_idx}'
-            full_prefix = f'results/sim5/s{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{opt_tol}_mi{max_iters}'
+            full_prefix = f'results/sim5/s{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
 
             covs, covs_test = make_covs(seed, a, b)
             Ms, omega_indices, observed_entries = generate_data(
@@ -546,11 +580,13 @@ def main():
     Path('results/sim5').mkdir(exist_ok=True)
     Path('figures').mkdir(exist_ok=True)
 
-    plt.style.use('../../jmlr.mplstyle')
+    plt.style.use('jmlr.mplstyle')
 
-    file_suffix = f'src{int(prob_source * 100)}_opt{opt_tol}_mi{max_iters}'
+    file_suffix = f'src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
+    file_suffix += f'_seed{SEEDS[0]}-{SEEDS[-1]}'
     results_agg  = Path(f'results/sim5/agg_{file_suffix}.csv')
     results_miss = Path(f'results/sim5/miss_{file_suffix}.csv')
+    print(f"Results files: {results_agg} and {results_miss}")
 
     if args.rerun or not (results_agg.exists() and results_miss.exists()):
         df_agg, df_miss = run_simulation(
