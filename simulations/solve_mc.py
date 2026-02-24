@@ -40,8 +40,16 @@ def solveRight(Us, observed_entries, omega_indices, ncol, lambdaR=0,
     
     # Problem
     V_T = cp.Variable((rank, ncol))
+    V = V_T.T
     errors = []
     for s in range(num_e):
+        # rows, cols = omega_indices[s]
+        
+        # # OPTIMIZED: Only compute the entries we actually observe
+        # # This is equivalent to (Us[s] @ V.T)[rows, cols]
+        # predictions = cp.sum(cp.multiply(Us[s][rows, :], V[cols, :]), axis=1)
+        # diff = predictions - observed_entries[s]
+
         diff = (Us[s] @ V_T)[omega_indices[s]] - observed_entries[s]
         if type == 'wc':
             errors.append(cp.norm(diff, p='fro') / sqrt(nrow[s])) #/ len(observed_entries[s])) # TODO: this is new (observed entries)
@@ -195,6 +203,12 @@ def solveLeft(V, observed_entries, omega_indices, nrow, lambdaL=0,
     Us = [cp.Variable((ne, rank)) for ne in nrow]
     errors = []
     for s in range(num_e):
+        # rows, cols = omega_indices[s]
+        
+        # # OPTIMIZED: Row-wise dot product
+        # predictions = cp.sum(cp.multiply(Us[s][rows, :], V[cols, :]), axis=1)
+        # diff = predictions - observed_entries[s]
+
         diff = (Us[s] @ V.T)[omega_indices[s]] - observed_entries[s]
         errors.append(diff)
     obj = cp.Minimize(cp.norm(cp.hstack(errors)))# TODO: / n
@@ -220,7 +234,7 @@ def solveLeft(V, observed_entries, omega_indices, nrow, lambdaL=0,
         return Us
 
     
-def get_mc_solution(observed_entries, omega_indices, nrow, ncol, rank, num_e,
+def get_mc_solution(observed_entries, omega_indices, nrow, ncol, rank, num_e, rng,
                     lambdaL=0, lambdaR=0,
                     type='wc', store_history=False, 
                     init_type='random', init_values=None, 
@@ -243,7 +257,7 @@ def get_mc_solution(observed_entries, omega_indices, nrow, ncol, rank, num_e,
 
     # set up starting point
     if init_type == 'random': 
-        Us = [0.1 * np.random.randn(ne, rank) for ne in nrow]
+        Us = [0.1 * rng.standard_normal((ne, rank)) for ne in nrow]
     elif init_type == 'svd':
         Us = []
         for s in range(num_e):
@@ -297,7 +311,7 @@ def get_mc_solution(observed_entries, omega_indices, nrow, ncol, rank, num_e,
         return Us, V
     
 
-def altMinSense(observed_entries, omega_indices, nrow, ncol, rank,
+def altMinSense(observed_entries, omega_indices, nrow, ncol, rank, rng,
                 lambdaL=0, lambdaR=0, # TODO document
                 type='wc', store_history=False, 
                 init_type='random', init_values=None, reruns=1,
@@ -376,7 +390,7 @@ def altMinSense(observed_entries, omega_indices, nrow, ncol, rank,
         Us, V, loss, UV_history = get_mc_solution(
             observed_entries, 
             omega_indices,
-            nrow, ncol, rank, num_e,
+            nrow, ncol, rank, num_e, rng,
             type=type, 
             store_history=True,
             init_type=init_type,
