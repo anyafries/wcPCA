@@ -42,13 +42,13 @@ rng = np.random.default_rng()
 FANCYIMPUTE = True
 
 
-SEEDS               = [1,2,3] #list(range(1, 25))
-P                   = 500       # dimension
-N_ROW               = 1000      # training rows per environment
+SEEDS               = list(range(1, 4))
+P                   = 50       # dimension
+N_ROW               = 500      # training rows per environment
 N_ROW_TEST          = 100        # test rows per environment
 RANK                = 10        # rank (shared + env-specific each rank//2)
 N_ENVS              = 5         # training environments
-N_TEST_ENVS         = 10        # extra test envs from convex hull
+N_TEST_ENVS         = 0        # extra test envs from convex hull
 NORM_CST            = 100       # matrices scaled so Tr(Sigma) = NORM_CST^2
 
 QS                  = [0.05, 0.1, 0.2, 0.5, 0.8]   # target qs for panel 3
@@ -93,7 +93,7 @@ def load_solution(file_prefix, args, envs, type='pool', override=False,
                     rank=args['rank'], 
                     max_iters=args['max_iters'], 
                     verbose=True, #args['verbose'],
-                    # learning_rate=0.0001,
+                    learning_rate=0.001,
                     shrinkage_value=0,
                 ).fit_transform(X_incomplete_normalized)
                 X_filled = biscaler.inverse_transform(X_filled_normalized)
@@ -120,8 +120,8 @@ def load_solution(file_prefix, args, envs, type='pool', override=False,
         return right_factor, Mhats, Mhat #Us, V, M_opt
 
 
-def load_minpca_solution(data_prefix, full_prefix, rtest, covs, envs, omega_indices, Ms, 
-                         override=False):
+def load_minpca_solution(data_prefix, full_prefix, rtest, covs, 
+                         envs, omega_indices, Ms, override=False):
     file_r = f"{data_prefix}_minpca_r.npz"
     if os.path.exists(file_r) and not override:
         print(f"\t(Loading R minpca from {file_r}")
@@ -133,7 +133,6 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs, envs, omega_indi
         minpca.fit(covs, n_restarts=10, n_iters=1000)
         r = minpca.components() #.reshape(-1, rtest)
         r = r / np.linalg.norm(r, axis=0)
-        print(f"\t(Saving results to {file_r})")
         np.savez(file_r, r=r)
 
     file_m = f"{full_prefix}_minpca_m.npz"
@@ -312,13 +311,12 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
 #                       Main Simulation Loop                       #
 # ================================================================ #
 
-def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
+def run_simulation(prob_source, opt_tol, max_iters, results_miss,
                    override=False):
     """
     For each (seed, het_level): solve right factors, evaluate on test envs
     at prob_source and at each q in QS.  Saves two CSVs.
     """
-    agg_rows  = []
     miss_rows = []
 
     for seed in SEEDS:
@@ -336,28 +334,12 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
                 data_prefix, full_prefix, opt_tol, max_iters, override,
             )
 
-            # --- Aggregate evaluation at prob_source (for Figures 1 and 2 panels 0-1) ---
-            env_errs = {m: [] for m in right_factors}
-            for cov_t in covs_test:
-                e = eval_on_test_cov(right_factors, cov_t, prob_source)
-                for m in right_factors:
-                    env_errs[m].append(e[m])
-            for m in right_factors:
-                agg_rows.append({
-                    'seed':       seed,
-                    'a':          a,
-                    'b':          b,
-                    'q':          prob_source,
-                    'method':     m,
-                    'mean':       np.mean(env_errs[m]),
-                    'worst_case': np.max(env_errs[m]),
-                })
-
+            current_qs = QS.copy()
+            if prob_source not in current_qs:
+                current_qs.append(prob_source)
 
             # --- Missingness sweep (for Figure 2 panel 2) ---
-            for q in QS:
-                if q == prob_source:
-                    continue  # already evaluated above
+            for q in current_qs:
                 env_errs_q = {m: [] for m in right_factors}
                 for cov_t in covs_test:
                     e = eval_on_test_cov(right_factors, cov_t, q)
@@ -374,13 +356,10 @@ def run_simulation(prob_source, opt_tol, max_iters, results_agg, results_miss,
                         'worst_case': np.max(env_errs_q[m]),
                     })
 
-    df_agg  = pd.DataFrame(agg_rows)
     df_miss = pd.DataFrame(miss_rows)
-    df_miss = pd.concat([df_miss, df_agg], ignore_index=True)
-    df_agg.to_csv(results_agg,  index=False)
     df_miss.to_csv(results_miss, index=False)
-    print(f"\nSaved results to {results_agg} and {results_miss}")
-    return df_agg, df_miss
+    print(f"\nSaved results to {results_miss}")
+    return df_miss
 
 
 # ================================================================ #
@@ -588,20 +567,19 @@ def main():
 
     file_suffix = f'src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
     file_suffix += f'_seed{SEEDS[0]}-{SEEDS[-1]}'
-    results_agg  = Path(f'results/sim5/agg_{file_suffix}.csv')
     results_miss = Path(f'results/sim5/miss_{file_suffix}.csv')
-    print(f"Results files: {results_agg} and {results_miss}")
+    print(f"Results file: {results_miss}")
 
-    if args.rerun or not (results_agg.exists() and results_miss.exists()):
-        df_agg, df_miss = run_simulation(
-            prob_source, opt_tol, max_iters, results_agg, results_miss,
+    if args.rerun or not results_miss.exists():
+        df_miss = run_simulation(
+            prob_source, opt_tol, max_iters, results_miss,
             override=args.rerun,
         )
     else:
-        print(f'Loading cached results from {results_agg} and {results_miss}')
-        df_agg  = pd.read_csv(results_agg)
+        print(f'Loading cached results from {results_miss}')
         df_miss = pd.read_csv(results_miss)
 
+    df_agg = df_miss[df_miss['q'] == prob_source].copy()
     make_figure1(df_agg, prob_source)
     make_figure2(df_agg, df_miss, prob_source)
 
