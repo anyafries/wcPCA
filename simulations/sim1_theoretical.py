@@ -33,18 +33,18 @@ FIGURE_FILE = 'figures/sim_maxrcs_bound.png'
 
 def run_simulation():
     """Run the theoretical result simulation."""
-    np.random.seed(SEED)
+    rng = np.random.default_rng(SEED)
     torch.manual_seed(SEED)
 
     # Generate training covariances
     training_covs = get_random_covs(
-        P, N_COMPONENTS, N_ENVS,
+        P, N_COMPONENTS, N_ENVS, rng,
         a1=0.1, b1=1.0, a2=0.1, b2=1.0
     )
     avg_cov = np.mean(training_covs, axis=0)
 
     # Generate test covariances from convex hull
-    test_covs = training_covs + sample_from_convex_hull(training_covs, N_TEST_ENVS)
+    test_covs = training_covs + sample_from_convex_hull(training_covs, N_TEST_ENVS, rng)
 
     # Pooled PCA solution (SVD of average covariance)
     _, _, V_T = np.linalg.svd(avg_cov)

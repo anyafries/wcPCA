@@ -30,13 +30,13 @@ N_ENVS = 5  # environments
 N_SIMS = 25  # simulations per setting
 
 SAMPLE_SIZES = [100, 250, 500, 1000, 2000, 5000, 10000]
-HETEROGENEITY_LEVELS = [(0.05, 0.1), (0.1, 0.5), (0.5, 1), (1, 5)]
+HETEROGENEITY_LEVELS = [(0, 1), (1, 2), (2, 3), (3, 4)]
 
 RESULTS_FILE = 'results/sim3_finite_sample.csv'
 FIGURE_FILE = 'figures/sim_maxrcs_fs_box.png'
 
 
-def run_simulation_single(sample_size, training_covs, n_components, verbose=True):
+def run_simulation_single(sample_size, training_covs, n_components, rng, verbose=True):
     """Run a single finite-sample simulation."""
     if verbose:
         print(f'Running for n={sample_size}')
@@ -45,7 +45,7 @@ def run_simulation_single(sample_size, training_covs, n_components, verbose=True
 
     # Generate training data from covariances
     Xs = [
-        np.random.multivariate_normal(mu, cov, sample_size)
+        rng.multivariate_normal(mu, cov, sample_size)
         for cov in training_covs
     ]
     X_pool = np.vstack(Xs)
@@ -92,7 +92,7 @@ def run_simulation_single(sample_size, training_covs, n_components, verbose=True
 
 def run_simulation():
     """Run the full finite-sample simulation."""
-    np.random.seed(SEED)
+    rng = np.random.default_rng(SEED)
     torch.manual_seed(SEED)
 
     results = []
@@ -100,7 +100,7 @@ def run_simulation():
         for i in range(N_SIMS):
             # Generate training covariances
             training_covs = get_random_covs(
-                P, N_COMPONENTS, N_ENVS,
+                P, N_COMPONENTS, N_ENVS, rng,
                 a1=0.1, b1=1.0, a2=a, b2=b
             )
             avg_cov = np.mean(training_covs, axis=0)
@@ -126,7 +126,7 @@ def run_simulation():
             # Finite-sample results for each sample size
             for n in SAMPLE_SIZES:
                 res = run_simulation_single(
-                    n, training_covs, N_COMPONENTS, verbose=True
+                    n, training_covs, N_COMPONENTS, rng, verbose=True
                 )
                 for r in res:
                     r['sim'], r['a'], r['b'] = i, a, b
