@@ -26,11 +26,11 @@ SEED = 10
 P = 20  # dimension
 N_COMPONENTS = 5  # rank
 N_ENVS = 5  # environments
-N_SAMPLE = 1000  # sample size per environment
+N_SAMPLE = 2000  # sample size per environment
 N_SIMS = 25  # simulations
 
 LB_NOISE = 0.0
-UB_NOISE = 0.09  # upper bound for noise std
+UB_NOISE = 0.1  # upper bound for noise std
 
 EMPIRICAL = True  # whether to use empirical data
 
@@ -49,12 +49,9 @@ PALETTE = {
 
 def run_simulation():
     """Run the heterogeneous noise simulation."""
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
-
     results = []
     for sim in range(N_SIMS):
-        np.random.seed(SEED + sim)
+        rng = np.random.default_rng(SEED + sim)
         torch.manual_seed(SEED + sim)
 
         if sim % 5 == 0:
@@ -62,22 +59,22 @@ def run_simulation():
 
         # Generate covariances with varying env-specific eigenvalues
         covariances = get_random_covs(
-            P, N_COMPONENTS, N_ENVS,
+            P, N_COMPONENTS, N_ENVS, rng,
             a1=0.1, b1=1.0, a2=0.1, b2=1.0,
             env_eigs_vary=True
         )
 
         # Generate heterogeneous noise levels
-        stddev_noises = np.random.uniform(LB_NOISE, UB_NOISE, size=N_ENVS)
+        stddev_noises = rng.uniform(LB_NOISE, UB_NOISE, size=N_ENVS)
 
         if EMPIRICAL:
             # Generate empirical data
-            Xtrain = [np.random.multivariate_normal(np.zeros(P), cov, N_SAMPLE)
+            Xtrain = [rng.multivariate_normal(np.zeros(P), cov, N_SAMPLE)
                       for cov in covariances]
-            Xnoise = [np.random.normal(0, noise, size=(N_SAMPLE, P))
+            Xnoise = [rng.normal(0, noise, size=(N_SAMPLE, P))
                       for noise in stddev_noises]
             Ztrain = [X + Xn for X, Xn in zip(Xtrain, Xnoise)]
-            Xtest = [np.random.multivariate_normal(np.zeros(P), cov, N_SAMPLE)
+            Xtest = [rng.multivariate_normal(np.zeros(P), cov, N_SAMPLE)
                      for cov in covariances]
 
             # Compute sample covariances
