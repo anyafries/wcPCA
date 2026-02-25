@@ -291,6 +291,7 @@ def get_mc_solution(observed_entries, omega_indices, nrow, ncol, rank, num_e, rn
                 print("Optimality conditions satisfied.")
                 print(f"Iteration {T}, Objective value = {objValue:5.3g}")
                 print("**************************************************")
+            print(f"Optimality conditions satisfied at iteration {T}.")
             break
         else:
             if verbose:
