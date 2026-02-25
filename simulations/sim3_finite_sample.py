@@ -30,7 +30,7 @@ N_ENVS = 5  # environments
 N_SIMS = 25  # simulations per setting
 
 SAMPLE_SIZES = [100, 250, 500, 1000, 2000, 5000, 10000]
-HETEROGENEITY_LEVELS = [(0, 1), (1, 2), (2, 3), (3, 4)]
+HETEROGENEITY_LEVELS = [(0, 0.5), (0.5, 1), (1, 2), (2, 5)]
 
 RESULTS_FILE = 'results/sim3_finite_sample.csv'
 FIGURE_FILE = 'figures/sim_maxrcs_fs_box.png'

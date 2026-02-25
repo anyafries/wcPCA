@@ -29,7 +29,7 @@ N_ENVS = 5  # training environments
 N_REPETITIONS = 25  # repetitions per heterogeneity level
 
 # Heterogeneity levels: (a2, b2) for env-specific eigenvalues
-HETEROGENEITY_LEVELS = [(0.05, 0.1), (0.1, 0.5), (0.5, 1), (1, 5)]
+HETEROGENEITY_LEVELS = [(0, 0.5), (0.5, 1), (1, 2), (2, 5)]
 
 RESULTS_FILE = 'results/sim2_avg_vs_wc.csv'
 FIGURE_FILE = 'figures/sim_wc_vs_avg_rg'
@@ -85,14 +85,14 @@ def avg_vs_wc(n_components, avg_cov, covs):
 
 def run_simulation():
     """Run the average vs worst-case comparison simulation."""
-    np.random.seed(SEED)
+    rng = np.random.default_rng(SEED)
     torch.manual_seed(SEED)
 
     results = []
     for a, b in HETEROGENEITY_LEVELS:
         for i in range(N_REPETITIONS):
             covs = get_random_covs(
-                P, N_COMPONENTS, N_ENVS,
+                P, N_COMPONENTS, N_ENVS, rng,
                 a1=0.1, b1=1.0, a2=a, b2=b
             )
             avg_cov = np.mean(covs, axis=0)
