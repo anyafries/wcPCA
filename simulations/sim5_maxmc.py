@@ -38,12 +38,12 @@ from utils import get_random_covs, sample_from_convex_hull
 # ================================================================ #
 #                          Constants                               #
 # ================================================================ #
-FANCYIMPUTE = True
+FANCYIMPUTE = False
 
-SEEDS               = list(range(5))
-P                   = 50       # dimension
-N_ROW               = 100      # training rows per environment
-N_ROW_TEST          = 100        # test rows per environment
+SEEDS               = list(range(1))
+P                   = 500       # dimension
+N_ROW               = 1000      # training rows per environment
+N_ROW_TEST          = 1000        # test rows per environment
 N_COMPONENTS        = 5        # rank 
 N_ENVS              = 5         # training environments
 N_TEST_ENVS         = 0        # extra test envs from convex hull
@@ -103,7 +103,7 @@ def load_solution(file_prefix, args, envs, type='pool', override=False,
                     rank=args['rank'], 
                     max_iters=args['max_iters'], 
                     verbose=True, #args['verbose'],
-                    learning_rate=0.01,
+                    learning_rate=0.1,
                     shrinkage_value=0,
                 ).fit_transform(X_missing)
                 # X_filled = biscaler.inverse_transform(X_filled_normalized)
@@ -139,7 +139,9 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs,
     else:
         print(f"\t(Computing minPCA right factor)")
         minpca = minPCA(n_components=rtest, function='maxrcs', norm=False)
-        minpca.fit(covs, n_restarts=5, n_iters=1000, lr=0.01) 
+        print(covs[0][:3,:3])
+        covs_scaled = [C * 1e3 for C in covs]  # scale up to avoid numerical issues
+        minpca.fit(covs_scaled, n_restarts=5, n_iters=1000, lr=0.1) 
         r = minpca.components() 
         r = r / np.linalg.norm(r, axis=0)
         np.savez(file_r, r=r)
@@ -165,8 +167,6 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs,
 
 def make_covs(seed, a, b, rng):
     """Generate training and test covariances for one (seed, het) config."""
-    torch.manual_seed(seed)
-
     raw = get_random_covs(P, N_COMPONENTS, N_ENVS, rng, a1=0.1, b1=1.0, a2=a, b2=b)
     covs = [C * NORM_CST ** 2 for C in raw]   # scale to Tr(Sigma) = NORM_CST^2
     covs_test = covs + sample_from_convex_hull(covs, N_TEST_ENVS, rng)
@@ -261,7 +261,6 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
     full_prefix:  used for poolMC, maxMC, and minPCA Mhats
     """
     emp_covs = [M.T @ M / N_ROW for M in Ms]
-    print(len(emp_covs))
 
     # PCA — empirical pooled covariance
     cov_pooled_emp = np.mean(emp_covs, axis=0)
@@ -285,7 +284,11 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
         'reruns':           1,
         'max_iters':        max_iters,
         'rng':              rng,
+        'init_type':        'svd',
     }
+
+    # R_pool = R_pca.copy() 
+    # R_wc = R_minpca.copy()
 
     # poolMC
     R_pool, _, _ = load_solution(
@@ -321,6 +324,8 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
 
             train_seed = seed * 1000 + het_idx
             rng_train = np.random.default_rng(train_seed)
+            np.random.seed(train_seed)
+            torch.manual_seed(train_seed)
 
             covs, covs_test = make_covs(seed, a, b, rng_train)
             Ms, omega_indices, observed_entries = generate_data(
@@ -461,8 +466,6 @@ def absolute_errors_plot(df, title='', ax=None, methods=None):
                     (df['seed'] == seed) & (df['a'] == a) &
                     (df['b'] == b) & (df['method'] == method)
                 ]
-                print(sub.shape)
-                print(sub)
                 if sub.empty:
                     continue
                 avg_err = sub['mean'].values[0]
@@ -561,6 +564,7 @@ def make_figure2(df_agg, df_miss, prob_source):
     sns.boxplot(
         data=df_wide, x='q', y='diff_wc_maxMC', ax=ax[2],
         color='#2f85c3', fliersize=2, width=0.65, linewidth=0.8,
+        orient='v'
     )
     ax[2].axhline(0, color='black', linestyle='--', linewidth=0.5)
     ax[2].set_xlabel(r'$q_\textrm{target}$')
