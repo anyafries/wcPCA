@@ -315,6 +315,8 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
     at prob_source and at each q in QS.  Saves two CSVs.
     """
     miss_rows = []
+    cache_dir = Path(f'results/sim5/{SUBDIR}/cache')
+    cache_dir.mkdir(exist_ok=True)
 
     for seed in SEEDS:
         for het_idx, (a, b) in enumerate(HETEROGENEITY_LEVELS):
@@ -323,6 +325,12 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
             print(f"\nSeed {seed}, heterogeneity a={a}, b={b}")
             data_prefix = f'results/sim5/{SUBDIR}/s{seed}_h{het_idx}'
             full_prefix = f'results/sim5/{SUBDIR}/s{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
+            eval_cache = cache_dir / f's{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}_nrowtest{N_ROW_TEST}_ntestenvs{N_TEST_ENVS}_eval.csv'
+
+            if eval_cache.exists() and not override:
+                print(f"\t(Loading eval results from {eval_cache})")
+                miss_rows.extend(pd.read_csv(eval_cache).to_dict('records'))
+                continue
 
             train_seed = seed * 1000 + het_idx
             rng_train = np.random.default_rng(train_seed)
@@ -342,6 +350,7 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
             if prob_source not in current_qs:
                 current_qs.append(prob_source)
 
+            loop_rows = []
             for q in current_qs:
                 env_errs_q = {m: [] for m in right_factors}
                 for cov_idx, cov_t in enumerate(covs_test):
@@ -351,7 +360,7 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
                     for m in right_factors:
                         env_errs_q[m].append(e[m])
                 for m in right_factors:
-                    miss_rows.append({
+                    loop_rows.append({
                         'seed':       seed,
                         'a':          a,
                         'b':          b,
@@ -360,6 +369,10 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
                         'mean':       np.mean(env_errs_q[m]),
                         'worst_case': np.max(env_errs_q[m]),
                     })
+
+            pd.DataFrame(loop_rows).to_csv(eval_cache, index=False)
+            print(f"\t(Saved eval results to {eval_cache})")
+            miss_rows.extend(loop_rows)
 
     df_miss = pd.DataFrame(miss_rows)
     df_miss.to_csv(results_miss, index=False)
