@@ -46,7 +46,7 @@ python sim5_maxmc.py
 ! TODO: document adding the Fair PCA repo
 ```
 
-Benchmarks maxRCS against published baselines on the objectives MM\_Var and MM\_Loss, varying dimension $p\in\{10,50\}$ and number of environments $E \in \{5, 50\}$.
+Benchmarks maxRCS against published baselines on the objectives MM\_Var and MM\_Loss, varying the dimension and number of environments.
 
 | Script | Description |
 |---|---|
@@ -55,6 +55,7 @@ Benchmarks maxRCS against published baselines on the objectives MM\_Var and MM\_
 | `fairpca.py` | Runs FairPCA via SDP and multiplicative weights (Tantipongpipat et al., NeurIPS 2019) |
 | `stablepca.py` | Runs StablePCA |
 
+Usage: 
 ```bash
 cd comparison
 python comparison.py                # runs all methods and produces combined figures
