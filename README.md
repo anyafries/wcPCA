@@ -29,6 +29,7 @@ All scripts cache results in a `results/` subdirectory and save figures to `figu
 | Section 5.1.5. (Figure 7 and B.iii) | `sim5_maxmc.py` | `figures/sim5_*.png` |
 <!-- | Section 5.1.2. (Figure 4) | `sim_maxrcs_two_solutions.py` | `figures/` -->
 
+Usage:
 ```bash
 cd simulations
 
