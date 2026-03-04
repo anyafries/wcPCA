@@ -1,6 +1,6 @@
 # Worst-case low-rank approximation (wcPCA)
 
-This repository contains all code to reproduce the simulations, method comparisons, and real-data applications in the paper of the paper *Worst-case low rank approximation*.
+This repository contains all code to reproduce the simulations, method comparisons, and real-data applications of the paper *Worst-case low rank approximation*.
 
 ---
 
