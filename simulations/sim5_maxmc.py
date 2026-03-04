@@ -40,7 +40,6 @@ from utils import get_random_covs, sample_from_convex_hull
 # ================================================================ #
 FANCYIMPUTE = False
 
-SEEDS               = list(range(1))
 P                   = 500       # dimension
 N_ROW               = 1000      # training rows per environment
 N_ROW_TEST          = 1000        # test rows per environment
@@ -53,8 +52,8 @@ SUBDIR = f'p{P}_nrow{N_ROW}_norm{NORM_CST}'
 SUBDIR += f'_ncomp{N_COMPONENTS}_nenvs{N_ENVS}'
 FIGSUBDIR = SUBDIR + f'_nrowtest{N_ROW_TEST}_ntestenvs{N_TEST_ENVS}'
 
-QS                  = [0.05, 0.1, 0.2, 0.5, 0.8]   # target qs for panel 3
-HETEROGENEITY_LEVELS = [(1.0, 5.0)] #[(0.05, 0.1)] #, (0.1, 0.5), (0.5, 1.0), (1.0, 5.0)]
+QS                  = [0.05, 0.1, 0.2, 0.5, 0.8, 1.0]   # target qs for panel 3
+HETEROGENEITY_LEVELS = [(2, 5), (1, 2), (0.5, 1), (0, 0.5)]
 
 FIGURE_COMP  = Path(f'figures/{FIGSUBDIR}/sim5_comparison.png')
 FIGURE_ALL   = Path(f'figures/{FIGSUBDIR}/sim5_all.png')
@@ -141,7 +140,7 @@ def load_minpca_solution(data_prefix, full_prefix, rtest, covs,
         minpca = minPCA(n_components=rtest, function='maxrcs', norm=False)
         print(covs[0][:3,:3])
         covs_scaled = [C * 1e3 for C in covs]  # scale up to avoid numerical issues
-        minpca.fit(covs_scaled, n_restarts=5, n_iters=1000, lr=0.1) 
+        minpca.fit(covs_scaled, n_restarts=10, n_iters=1000, lr=0.1, verbose=True)
         r = minpca.components() 
         r = r / np.linalg.norm(r, axis=0)
         np.savez(file_r, r=r)
@@ -292,12 +291,12 @@ def solve_factors(covs, Ms, omega_indices, observed_entries,
 
     # poolMC
     R_pool, _, _ = load_solution(
-        full_prefix, args, N_ENVS, type='pool', override=override,
+        full_prefix, args, N_ENVS, type='pool', override=False, #override,
     )
 
     # maxMC
     R_wc, _, _ = load_solution(
-        full_prefix, args, N_ENVS, type='wc', override=override,
+        full_prefix, args, N_ENVS, type='wc', override=False,#override,
     )
 
 
@@ -320,10 +319,14 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
 
     for seed in SEEDS:
         for het_idx, (a, b) in enumerate(HETEROGENEITY_LEVELS):
+            # if het_idx in[0,2, len(HETEROGENEITY_LEVELS) - 1]:
+            #     continue
             print(f"\nSeed {seed}, heterogeneity a={a}, b={b}")
             data_prefix = f'results/sim5/{SUBDIR}/s{seed}_h{het_idx}'
             full_prefix = f'results/sim5/{SUBDIR}/s{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
-            eval_cache = cache_dir / f's{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}_nrowtest{N_ROW_TEST}_ntestenvs{N_TEST_ENVS}_eval.csv'
+            cache_file = f's{seed}_h{het_idx}_src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}_nrowtest{N_ROW_TEST}_ntestenvs{N_TEST_ENVS}'
+            cache_file += '_fancyimpute_eval.csv' if FANCYIMPUTE else '_eval.csv'
+            eval_cache = cache_dir / cache_file
 
             if eval_cache.exists() and not override:
                 print(f"\t(Loading eval results from {eval_cache})")
@@ -383,7 +386,8 @@ def run_simulation(prob_source, opt_tol, max_iters, results_miss,
 # ================================================================ #
 
 def comparison_plot_green_red(df, title='', maxmc=False, ax=None, s=10,
-                               ylabel=r'$\Delta$ reconstruction error'):
+                               ylabel=r'$\Delta$ reconstruction error',
+                               ymin=None, ymax=None):
     """
     Scatter plot of Δavg and Δwc for each (seed, het) pair.
     Points are colored green (better) → grey (neutral) → red (worse).
@@ -405,10 +409,9 @@ def comparison_plot_green_red(df, title='', maxmc=False, ax=None, s=10,
             m2 = sub[sub['method'] == method2]
             if m1.empty or m2.empty:
                 continue
-            all_deltas.extend([
-                m2['mean'].values[0]       - m1['mean'].values[0],
-                m2['worst_case'].values[0] - m1['worst_case'].values[0],
-            ])
+            delta_avg = m2['mean'].values[0] - m1['mean'].values[0]
+            delta_wc = m2['worst_case'].values[0] - m1['worst_case'].values[0]
+            all_deltas.extend([delta_avg, delta_wc])
 
     if not all_deltas:
         return
@@ -427,17 +430,19 @@ def comparison_plot_green_red(df, title='', maxmc=False, ax=None, s=10,
             m2 = sub[sub['method'] == method2]
             if m1.empty or m2.empty:
                 continue
-            delta_avg = m2['mean'].values[0]       - m1['mean'].values[0]
+            delta_avg = m2['mean'].values[0] - m1['mean'].values[0]
             delta_wc  = m2['worst_case'].values[0] - m1['worst_case'].values[0]
-            ax.plot(x_labels, [delta_avg, delta_wc],
-                    ':', linewidth=0.8, color='#939393', zorder=1)
-            ax.scatter(x_labels, [delta_avg, delta_wc],
-                       s=s, marker='o', zorder=10,
-                       c=[cmap(norm(delta_avg)), cmap(norm(delta_wc))])
+            if delta_avg > -0.35:
+                ax.plot(x_labels, [delta_avg, delta_wc],
+                        ':', linewidth=0.8, color='#939393', zorder=1)
+                ax.scatter(x_labels, [delta_avg, delta_wc],
+                        s=s, marker='o', zorder=10,
+                        c=[cmap(norm(delta_avg)), cmap(norm(delta_wc))])
 
     ax.axhline(0, color='black', linestyle='--', linewidth=0.5)
     ax.set_ylabel(ylabel)
     ax.set_xlim(-0.2, 1.2)
+    ax.set_ylim(ymin, ymax)
     ax.set_title(title)
 
     if created_fig:
@@ -511,17 +516,17 @@ def absolute_errors_plot(df, title='', ax=None, methods=None):
 #                           Figures                                #
 # ================================================================ #
 
-def make_figure1(df_agg, prob_source):
+def make_figure1(df_agg, prob_source, prob_target):
     """2-panel scatter figure comparing minPCA vs PCA and maxMC vs poolMC."""
     fig, ax = plt.subplots(1, 2, figsize=(4, 2), sharey=True)
     comparison_plot_green_red(
         df_agg,
-        title=rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_source}$',
+        title=rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_target}$',
         ax=ax[0], s=10,
     )
     comparison_plot_green_red(
         df_agg,
-        title=rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_source}$',
+        title=rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_target}$',
         maxmc=True, ax=ax[1], s=10, ylabel='',
     )
     plt.tight_layout()
@@ -530,7 +535,7 @@ def make_figure1(df_agg, prob_source):
     print(f"Saved {FIGURE_COMP}")
 
 
-def make_figure2(df_agg, df_miss, prob_source):
+def make_figure2(df_agg, df_miss, prob_source, prob_target, ymin=None, ymax=None):
     """
     3-panel figure:
       Panel 0 — scatter: minPCA vs PCA (same data as figure 1)
@@ -550,72 +555,103 @@ def make_figure2(df_agg, df_miss, prob_source):
     df_wide['diff_wc_maxMC'] = (
         df_wide['worst_case_maxMC'] - df_wide['worst_case_poolMC']
     )
+    df_wide['diff_wc_maxRCS'] = (
+        df_wide['worst_case_minPCA'] - df_wide['worst_case_PCA']
+    )
+    print(df_wide[(df_wide['diff_wc_maxRCS'] > 0) & (df_wide['q'] == 1)][['a', 'b']].value_counts())
     df_wide['q'] = df_wide['q'].round(2)
 
     fig, ax = plt.subplots(
-        1, 3, figsize=(6.5, 1.6), sharey=True,
-        gridspec_kw={'width_ratios': [1, 1, 1.4], 'wspace': 0.4},
+        1, 3, figsize=(6.8, 1.7), sharey=False,
+        gridspec_kw={'width_ratios': [1, 1, 1.4], 'wspace': 0.5},
     )
 
     # Panel 0: minPCA vs PCA
     comparison_plot_green_red(
         df_agg,
         title=f'Fully observed source,\n'
-              rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_source}$',
-        ax=ax[0], s=5, ylabel=r'$\Delta$ RCS error',
+              rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_target}$',
+        ax=ax[0], s=5, ylabel=r'$\Delta$ worst-case RCS error',
+        ymin=ymin, ymax=ymax,
     )
 
     # Panel 1: maxMC vs poolMC
     comparison_plot_green_red(
         df_agg,
         title=f'Partially observed source,\n'
-              rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_source}$',
-        maxmc=True, ax=ax[1], s=5, ylabel='',
+              rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_target}$',
+        maxmc=True, ax=ax[1], s=5, ylabel=r'$\Delta$ worst-case RCS error',
+        ymin=ymin, ymax=ymax,
     )
 
     # Panel 2: boxplot Δ wc maxMC vs q (sim3 style)
+    # sns.boxplot(
+    #     data=df_wide, x='q', y='diff_wc_maxRCS', ax=ax[2],
+    #     color='#2f85c3', fliersize=2, width=0.65, linewidth=0.8,
+    #     orient='v'
+    # )
+    # ax[2].axhline(0, color='black', linestyle='--', linewidth=0.5)
+    # ax[2].text(
+    #     1.07, 0, '→ worse',
+    #     transform=ax[2].get_yaxis_transform(),
+    #     rotation=90, va='bottom', ha='left', fontsize=8,
+    # )
+    # ax[2].text(
+    #     1.07, 0, 'maxMC better ←',
+    #     transform=ax[2].get_yaxis_transform(),
+    #     rotation=90, va='top', ha='left', fontsize=8,
+    # )
+    # ax[2].set_ylabel(r'$\Delta$ worst-case RCS error')
+
     sns.boxplot(
-        data=df_wide, x='q', y='diff_wc_maxMC', ax=ax[2],
-        color='#2f85c3', fliersize=2, width=0.65, linewidth=0.8,
+        # data=df_miss[df_miss['method'].isin(['PCA','minPCA'])], 
+        data=df_miss[df_miss['method'].isin(['poolMC','maxMC'])], 
+        x='q', y='worst_case', ax=ax[2],
+        fliersize=2, width=0.65, linewidth=0.8,
+        hue='method', 
+        palette={'PCA': '#b41f1f', 'minPCA': '#2f85c3',
+                 'poolMC': "#f75959", 'maxMC': "#57b6fa"}, 
+        dodge=True,
         orient='v'
     )
-    ax[2].axhline(0, color='black', linestyle='--', linewidth=0.5)
+    ax[2].set_ylabel('Worst-case RCS error')
+    # change legend PCA -> poolPCA, minPCA -> maxRCS
+    handles, labels = ax[2].get_legend_handles_labels()
+    new_labels = {'PCA': 'poolMC', 'minPCA': 'maxMC',
+                  'poolMC': 'poolMC', 'maxMC': 'maxMC'}
+    new_handles = [handles[i] for i in range(len(labels)) if labels[i] in new_labels]
+    new_labels = [new_labels[labels[i]] for i in range(len(labels)) if labels[i] in new_labels]
+    ax[2].legend(new_handles, new_labels, frameon=False, loc='upper right', title='')
+    
     ax[2].set_xlabel(r'$q_\textrm{target}$')
     ax[2].set_title(
-        f'Partially observed source,\n'
-        rf'$q_\textrm{{source}}={prob_source}$, varying $q_\textrm{{target}}$'
+        f'Fully observed source,\n'
+        rf'$q_\textrm{{source}}={1}$, varying $q_\textrm{{target}}$'
     )
-    ax[2].set_ylabel(r'$\Delta$ worst-case RCS error')
+    
     ax[2].yaxis.get_label().set_visible(True)
     plt.setp(ax[2].get_xticklabels(), rotation=90, ha='center')
-    ax[2].text(
-        1.07, 0, '→ worse',
-        transform=ax[2].get_yaxis_transform(),
-        rotation=90, va='bottom', ha='left', fontsize=8,
-    )
-    ax[2].text(
-        1.07, 0, 'maxMC better ←',
-        transform=ax[2].get_yaxis_transform(),
-        rotation=90, va='top', ha='left', fontsize=8,
-    )
+    for i in range(3):
+        ax[i].grid(axis='y', linestyle='--', alpha=0.7)
+    
 
     plt.savefig(FIGURE_ALL, dpi=600, bbox_inches='tight')
     plt.close()
     print(f"Saved {FIGURE_ALL}")
 
 
-def make_figure3(df_agg, prob_source):
+def make_figure3(df_agg, prob_source, prob_target):
     """2-panel figure: absolute errors — (PCA, minPCA) left, (poolMC, maxMC) right."""
     fig, axes = plt.subplots(1, 2, figsize=(4, 2), sharey=True)
     absolute_errors_plot(
         df_agg,
-        title=rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_source}$',
+        title=rf'$q_\textrm{{source}}=1,\ q_\textrm{{target}}={prob_target}$',
         ax=axes[0],
         methods=['PCA', 'minPCA'],
     )
     absolute_errors_plot(
         df_agg,
-        title=rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_source}$',
+        title=rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_target}$',
         ax=axes[1],
         methods=['poolMC', 'maxMC'],
     )
@@ -624,6 +660,236 @@ def make_figure3(df_agg, prob_source):
     plt.savefig(FIGURE_ABS, dpi=600, bbox_inches='tight')
     plt.close()
     print(f"Saved {FIGURE_ABS}")
+
+
+def make_figure5(df_agg, df_miss, prob_source, ymin=None, ymax=None):
+    """
+    """
+    methods = ['PCA', 'minPCA'] if prob_source == 1 else ['poolMC', 'maxMC']
+    metric = 'diff_wc_maxRCS' if prob_source == 1 else 'diff_wc_maxMC'
+
+    # Build wide-format DataFrame for panel 2
+    df_wide = df_miss.pivot_table(
+        index=['seed', 'a', 'b', 'q'],
+        columns='method',
+        values=['mean', 'worst_case'],
+    ).reset_index()
+    df_wide.columns = [
+        '_'.join(col).strip() if col[1] else col[0]
+        for col in df_wide.columns.values
+    ]
+    df_wide['diff_wc_maxMC'] = (
+        df_wide['worst_case_maxMC'] - df_wide['worst_case_poolMC']
+    )
+    df_wide['diff_wc_maxRCS'] = (
+        df_wide['worst_case_minPCA'] - df_wide['worst_case_PCA']
+    )
+    print(df_wide[(df_wide['diff_wc_maxRCS'] > 0) & (df_wide['q'] == 1)][['a', 'b']].value_counts())
+    df_wide['q'] = df_wide['q'].round(2)
+
+    
+    fig, ax = plt.subplots(1, 2, figsize=(6, 1.6), 
+                             sharey=True,
+                           gridspec_kw={'width_ratios': [1, 1.4], 'wspace': 0.6})
+    comparison_plot_green_red(
+        df_agg,
+        # title=f'Partially observed source,\n'
+        #       rf'$q_\textrm{{source}}={prob_source},\ q_\textrm{{target}}={prob_target}$',
+        maxmc=prob_source != 1, 
+        ax=ax[0], s=5, ylabel=r'$\Delta$ test RCS error',
+        ymin=ymin, ymax=ymax,
+    )
+
+
+    # Panel 2: boxplot Δ wc maxMC vs q (sim3 style)
+    df_wide['perc_missing'] = np.round(1 - df_wide['q'], 2)
+    spec = dict(
+        data=df_wide, x='perc_missing', y=metric, ax=ax[1], fliersize=0.5, 
+        width=0.8, orient='v', hue='a', 
+        # palette=["#9be15d", "#49b583", "#3a7a8a", "#3e4989"],
+        palette=["#de9542", "#b85555", "#872888", "#450f68"] #["#f9831b", "#c95d77", "#6549ca", "#2e127c"]
+    )
+    sns.boxplot(**spec, linewidth=0, showfliers=False, boxprops=dict(alpha=.5), legend=True)
+    sns.boxplot(**spec, fill=False, linewidth=0.7, legend=False)
+    # ax[j].axhline(0, color='black', linestyle='--', zorder=1, linewidth=1)
+    ax[1].set_ylabel(r'$\Delta$ worst-case' + '\ntest RCS error')
+    ax[1].text(
+        1.07, 0, '→ worse',
+        transform=ax[1].get_yaxis_transform(),
+        rotation=90, va='bottom', ha='left', fontsize=8,
+    )
+    ax[1].text(
+        1.07, 0, 'maxMC better ←',
+        transform=ax[1].get_yaxis_transform(),
+        rotation=90, va='top', ha='left', fontsize=8,
+    )
+    plt.setp(ax[1].get_xticklabels(), rotation=90, ha='center')
+    ax[1].set_xlabel('test \% missing')
+    ax[1].yaxis.get_label().set_visible(True)
+    # Ensure the y-axis itself, ticks and tick labels are visible
+    ax[1].yaxis.set_visible(True)
+    ax[1].tick_params(axis='y', which='both', labelleft=True)
+    for lbl in ax[1].get_yticklabels():
+        lbl.set_visible(True)
+    
+    # legend
+    # plt.tight_layout()
+    fig.subplots_adjust(right=0.7)
+    handles, labels = ax[1].get_legend_handles_labels()
+    print(handles, labels)
+    new_labels = {'0.0': '(0, 0.5)', '0.5': '(0.5, 1)', '1.0': '(1, 2)', '2.0': '(2,5)'}
+    new_handles = [handles[i] for i in range(len(labels)) if labels[i] in new_labels]
+    new_labels = [new_labels[labels[i]] for i in range(len(labels)) if labels[i] in new_labels]
+    ax[1].legend(
+        new_handles, new_labels, 
+        loc='center left',
+        bbox_to_anchor=(1.2, 0.5),
+        borderaxespad=0,
+        frameon=False,
+        title=r'$(\alpha, \beta)$',
+        # --- Sizing Adjustments ---
+        handlelength=1.0,  # Default is 2.0; making it 1.0 makes it a square
+        handleheight=0.6,  # Adjusts the vertical thickness of the box
+        handletextpad=0.5, # Adjusts spacing between the box and the text
+        labelspacing=0.5   # Adjusts vertical spacing between different legend items
+    )
+     
+    for j in range(2):
+        ax[j].grid(axis='y', linestyle='--', alpha=0.7)
+        
+    # ax[1].set_title(
+    #     f'Fully observed source' if prob_source == 1 else f'Partially observed source'
+    #     # rf'$q_\textrm{{source}}={1}$, varying $q_\textrm{{target}}$'
+    # )
+
+    figpath = Path(f'figures/{FIGSUBDIR}/sim5_main_{'obs' if prob_source == 1.0 else 'miss'}.png')
+    plt.savefig(figpath, dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"Saved {figpath}")
+
+
+def make_figure4(df_agg, df_miss, prob_source, prob_target, difference=False):
+    if difference:
+        # Build wide-format DataFrame for panel 2
+        df_wide = df_miss.pivot_table(
+            index=['seed', 'a', 'b', 'q'],
+            columns='method',
+            values=['mean', 'worst_case'],
+        ).reset_index()
+        df_wide.columns = [
+            '_'.join(col).strip() if col[1] else col[0]
+            for col in df_wide.columns.values
+        ]
+        df_wide['diff_wc_maxMC'] = (
+            df_wide['worst_case_maxMC'] - df_wide['worst_case_poolMC']
+        )
+        df_wide['diff_wc_maxRCS'] = (
+            df_wide['worst_case_minPCA'] - df_wide['worst_case_PCA']
+        )
+        print(df_wide[(df_wide['diff_wc_maxRCS'] > 0) & (df_wide['q'] == 1)][['a', 'b']].value_counts())
+        df_wide['q'] = df_wide['q'].round(2)
+
+    
+    if difference:
+        fig, ax = plt.subplots(1, 2, figsize=(5, 1.7), sharey=True)
+        # Panel 2: boxplot Δ wc maxMC vs q (sim3 style)
+        for j, metric in enumerate(['diff_wc_maxRCS', 'diff_wc_maxMC']):
+            spec = dict(
+                data=df_wide, x='q', y=metric, ax=ax[j], fliersize=0.5, 
+                width=0.8, orient='v', hue='a', 
+                # palette=["#9be15d", "#49b583", "#3a7a8a", "#3e4989"],
+                palette=["#de9542", "#b85555", "#872888", "#450f68"] #["#f9831b", "#c95d77", "#6549ca", "#2e127c"]
+            )
+            sns.boxplot(**spec, linewidth=0, showfliers=False, boxprops=dict(alpha=.5), legend=(j==1))
+            sns.boxplot(**spec, fill=False, linewidth=0.7, legend=False)
+            # ax[j].axhline(0, color='black', linestyle='--', zorder=1, linewidth=1)
+            ax[j].set_ylabel(r'$\Delta$ worst-case' + '\ntest RCS error')
+        ax[1].text(
+            1.07, 0, '→ worse',
+            transform=ax[1].get_yaxis_transform(),
+            rotation=90, va='bottom', ha='left', fontsize=8,
+        )
+        ax[1].text(
+            1.07, 0, 'maxMC better ←',
+            transform=ax[1].get_yaxis_transform(),
+            rotation=90, va='top', ha='left', fontsize=8,
+        )
+        # make a single legend for both subplots based on 'a' values on the right subplot outside the plot area
+        
+        plt.tight_layout()
+        fig.subplots_adjust(right=0.7)
+        handles, labels = ax[1].get_legend_handles_labels()
+        print(handles, labels)
+        new_labels = {'0.0': '(0, 0.5)', '0.5': '(0.5, 1)', '1.0': '(1, 2)', '2.0': '(2,5)'}
+        new_handles = [handles[i] for i in range(len(labels)) if labels[i] in new_labels]
+        new_labels = [new_labels[labels[i]] for i in range(len(labels)) if labels[i] in new_labels]
+        ax[1].legend(
+            new_handles, new_labels, 
+            loc='upper left',
+            bbox_to_anchor=(1.25, 1),
+            borderaxespad=0,
+            frameon=False,
+            title=r'$(\alpha, \beta)$',
+            # --- Sizing Adjustments ---
+            handlelength=1.0,  # Default is 2.0; making it 1.0 makes it a square
+            handleheight=0.6,  # Adjusts the vertical thickness of the box
+            handletextpad=0.5, # Adjusts spacing between the box and the text
+            labelspacing=0.5   # Adjusts vertical spacing between different legend items
+        )
+        # fig.legend(
+        #     new_handles, new_labels,
+        #     loc='center right',
+        #     title=r'$(\alpha, \beta)$',
+        #     frameon=False
+        # )
+        # ax[1].get_legend().remove()
+
+    else:
+        fig, ax = plt.subplots(1, 2, figsize=(5, 1.7), sharey=True)
+        for j, methods in enumerate([
+            ['PCA','minPCA'], ['poolMC','maxMC']
+        ]):
+
+            sns.boxplot(
+                # data=df_miss[df_miss['method'].isin(['PCA','minPCA'])], 
+                data=df_miss[df_miss['method'].isin(methods)], 
+                x='q', y='worst_case',
+                fliersize=2, width=0.65, linewidth=0.8,
+                hue='method', 
+                palette={'PCA': '#b41f1f', 'minPCA': '#2f85c3',
+                        'poolMC': "#f75959", 'maxMC': "#57b6fa"}, 
+                dodge=True,
+                orient='v',
+                ax=ax[j],
+            )
+            ax[j].set_ylabel('Worst-case test RCS error')
+            # change legend PCA -> poolPCA, minPCA -> maxRCS
+            handles, labels = ax[j].get_legend_handles_labels()
+            new_labels = {'PCA': 'poolMC', 'minPCA': 'maxMC',
+                        'poolMC': 'poolMC', 'maxMC': 'maxMC'}
+            new_handles = [handles[i] for i in range(len(labels)) if labels[i] in new_labels]
+            new_labels = [new_labels[labels[i]] for i in range(len(labels)) if labels[i] in new_labels]
+            ax[j].legend(new_handles, new_labels, frameon=False, loc='upper right', title='')
+            # ax[j].yaxis.get_label().set_visible(True)
+
+    for j in range(2):
+        plt.setp(ax[j].get_xticklabels(), rotation=90, ha='center')
+        ax[j].grid(axis='y', linestyle='--', alpha=0.7)
+        # ax[j].set_xlabel(r'$q_\textrm{target}$')
+        ax[j].set_xlabel('test \% observed')
+    ax[0].set_title(
+        f'Fully observed source'
+        # rf'$q_\textrm{{source}}={1}$, varying $q_\textrm{{target}}$'
+    )
+    ax[1].set_title(
+        f'Partially observed source'
+        # rf'$q_\textrm{{source}}={prob_source}$, varying $q_\textrm{{target}}$'
+    )
+
+    figpath = Path(f'figures/{FIGSUBDIR}/sim5_all2{'_diff' if difference else ''}.png')
+    plt.savefig(figpath, dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"Saved {figpath}")
 
 
 # ================================================================ #
@@ -650,10 +916,20 @@ def main():
         "--max_iters", type=int, default=50,
         help="Maximum iterations for poolMC and maxMC (default: 50)",
     )
+    parser.add_argument(
+        "--start_seed", type=int, default=0,
+        help="Starting seed index (default: 0)",
+    )
+    parser.add_argument(
+        "--end_seed", type=int, default=25,
+        help="Ending seed index (default: 25)",
+    )
     args = parser.parse_args()
     prob_source = args.prob_source
     opt_tol = args.opt_tol
     max_iters = args.max_iters
+    global SEEDS
+    SEEDS = list(range(args.start_seed, args.end_seed))
 
     Path('results').mkdir(exist_ok=True)
     Path('results/sim5').mkdir(exist_ok=True)
@@ -665,6 +941,8 @@ def main():
 
     file_suffix = f'src{int(prob_source * 100)}_opt{int(opt_tol * 1e6)}_mi{max_iters}'
     file_suffix += f'_seed{SEEDS[0]}-{SEEDS[-1]}_nrowtest{N_ROW_TEST}_ntestenvs{N_TEST_ENVS}'
+    if FANCYIMPUTE:
+        file_suffix += '_fancyimpute'
     results = Path(f'results/sim5/{SUBDIR}/{file_suffix}.csv')
     print(f"Results file: {results}")
 
@@ -677,10 +955,20 @@ def main():
         print(f'Loading cached results from {results}')
         df = pd.read_csv(results)
 
-    df_agg = df[df['q'] == prob_source].copy()
-    make_figure1(df_agg, prob_source)
-    make_figure2(df_agg, df, prob_source)
-    make_figure3(df_agg, prob_source)
+    df['mean'] = 1e4 * df['mean']  # scale up for better color visibility in figures
+    df['worst_case'] = 1e4 * df['worst_case']
+    # df = df[df['a'].isin([0, 0.5])]
+    df_plot = df[df['q'].isin([0.05, 0.2, 0.5, 0.8])]
+    prob_target = 0.2 # prob_source
+    df_agg = df[df['q'] == prob_target].copy()
+    
+    # make_figure1(df_agg, prob_source, prob_target)
+    # make_figure2(df_agg, df_plot, prob_source, prob_target, ymin=-2.4, ymax=0.5)
+    # make_figure3(df_agg, prob_source, prob_target)
+    # make_figure4(df_agg, df_plot, prob_source, prob_target, difference=False)
+    # make_figure4(df_agg, df_plot, prob_source, prob_target, difference=True)
+    make_figure5(df_agg, df_plot, prob_source=1, ymin=-2.4, ymax=0.7)
+    make_figure5(df_agg, df_plot, prob_source=0.1, ymin=-2.4, ymax=0.7)
 
 
 if __name__ == '__main__':
