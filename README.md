@@ -2,8 +2,6 @@
 
 This repository contains all code to reproduce the simulations, method comparisons, and real-data applications of the paper *Worst-case low rank approximation*.
 
----
-
 ## Repository Structure
 
 ```
@@ -94,8 +92,6 @@ cd ../ecosystem
 python ecosystem_analysis.py        # or --rerun
 ```
 
----
-
 ## Setup
 
 1. Create a virtual environment
@@ -124,7 +120,6 @@ cd ..
 ```bash
 pip install -r requirements.txt
 ```
----
 
 ## Citation
 
@@ -136,8 +131,6 @@ If you use this code, please cite:
 
 <!--```bibtex
 ```-->
-
----
 
 ## License
 
