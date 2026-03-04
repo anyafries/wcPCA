@@ -4,7 +4,7 @@ Simulation 1: Theoretical Result Visualization
 Shows that maxRCS achieves a uniform bound on reconstruction error across all
 test environments in the convex hull of training covariances.
 
-Output: figures/sim_maxrcs_bound.png
+Output: figures/sim1_theoretical.png
 """
 
 import argparse
@@ -28,7 +28,7 @@ N_ENVS = 5  # training environments
 N_TEST_ENVS = 50  # test environments from convex hull
 
 RESULTS_FILE = 'results/sim1_theoretical.csv'
-FIGURE_FILE = 'figures/sim_maxrcs_bound.png'
+FIGURE_FILE = 'figures/sim1_theoretical.png'
 
 
 def run_simulation():
@@ -52,7 +52,7 @@ def run_simulation():
 
     # maxRCS solution
     model = minPCA(n_components=N_COMPONENTS, norm=True)
-    model.fit(training_covs, n_restarts=5, lr=0.1, n_iters=1500)
+    model.fit(training_covs, n_restarts=5, lr=0.1, n_iters=1000)
     vminpca = model.v_
 
     # Compute reconstruction error on test environments

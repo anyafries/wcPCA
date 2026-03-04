@@ -1,9 +1,6 @@
 """
-Illustrative Example: 3D Visualization of minPCA vs Other Methods
-
-Shows a 3D visualization comparing different PCA approaches (minPCA, pooled PCA,
-separate PCA, and max-regret PCA) on two distributions with different covariance
-structures.
+Illustrative example: 3D visualization of minPCA vs other methods 
+(minPCA, poolPCA, sepPCA, and maxRegret) 
 
 Output: figures/eg-minpca.png
 """
@@ -13,7 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import multivariate_normal
 
 
@@ -211,9 +207,7 @@ def make_figure(data):
 
     # Set plot limits
     lims_adjust = [l * 1.7 for l in lims]
-    ax.set(xlim=lims_adjust[0], ylim=lims_adjust[1], 
-           zlim=lims_adjust[2])
-        #    zlim=[0.5*lims_adjust[2][0], lims_adjust[2][1]])
+    ax.set(xlim=lims_adjust[0], ylim=lims_adjust[1], zlim=lims_adjust[2])
 
     # Add legend
     handles, labels = ax.get_legend_handles_labels()
@@ -243,14 +237,7 @@ def make_figure(data):
     print(f'Saved figure to {FIGURE_FILE}')
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Illustrative Example: 3D visualization of minPCA vs other methods'
-    )
-    parser.add_argument('--rerun', action='store_true',
-                        help='Force rerun (no caching for this simulation)')
-    args = parser.parse_args()
-
+if __name__ == '__main__':
     # Ensure directories exist
     Path('figures').mkdir(exist_ok=True)
 
@@ -258,7 +245,3 @@ def main():
     print('Computing plot data...')
     data = compute_plot_data()
     make_figure(data)
-
-
-if __name__ == '__main__':
-    main()

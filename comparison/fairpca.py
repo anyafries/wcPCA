@@ -1,8 +1,8 @@
 """
-FairPCA Comparison Script
+FairPCA comparison script
 
 Runs FairPCA with SDP and MW optimizers for worst-case PCA comparison.
-Code adapted on 15 Nov 2025 from
+Requires the multiCriteriaDimReduction package from
 https://github.com/SDPforAll/multiCriteriaDimReduction
 
 Supports two objectives:

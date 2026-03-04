@@ -7,7 +7,6 @@ comparison figures.
 Usage:
     python comparison.py              # Run all methods and generate plots
     python comparison.py --rerun      # Force rerun all methods
-    python comparison.py --plots-only # Only generate plots from existing results
 
 Output:
     figures/comparison_MM_Var.png
@@ -234,11 +233,9 @@ def make_all_plots():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Comparison orchestrator and plotting')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--rerun', action='store_true',
                         help='Force rerun all methods')
-    parser.add_argument('--plots-only', action='store_true',
-                        help='Only generate plots from existing results')
     args = parser.parse_args()
 
     # Ensure directories exist
