@@ -1,10 +1,10 @@
 """
-Simulation 2: Average vs Worst-Case Comparison
+Simulation 2: Average vs worst-case comparison
 
 Compares maxRCS and poolPCA on average and worst-case explained variance
 across varying levels of heterogeneity.
 
-Output: figures/sim_wc_vs_avg_rg.png
+Output: figures/sim2_avg_vs_wc.png
 """
 
 import argparse
@@ -32,7 +32,7 @@ N_REPETITIONS = 25  # repetitions per heterogeneity level
 HETEROGENEITY_LEVELS = [(0, 0.5), (0.5, 1), (1, 2), (2, 5)]
 
 RESULTS_FILE = 'results/sim2_avg_vs_wc.csv'
-FIGURE_FILE = 'figures/sim_wc_vs_avg_rg'
+FIGURE_FILE = 'figures/sim2_avg_vs_wc'
 
 def avg_vs_wc(n_components, avg_cov, covs):
     """
@@ -161,7 +161,7 @@ def make_figure(df, relative=True):
         )
 
     # Scatter plot with color-coded points
-    sc = ax.scatter(
+    ax.scatter(
         x=df['metric'], y=-df[column],
         c=-df[column], cmap=cmap, norm=norm, zorder=10, s=10
     )
@@ -174,7 +174,7 @@ def make_figure(df, relative=True):
         tick_label.set_color(color)
 
     ax.set_xlim(-0.2, 1.2)
-    ylabel = 'Relative change in\nreconstruction error (\%)' if relative else r'$\Delta$ reconstruction error'
+    ylabel = 'Relative change in\nreconstruction error (\\%)' if relative else r'$\Delta$ reconstruction error'
     ax.set_ylabel(ylabel)
 
     # Add annotation
@@ -192,7 +192,7 @@ def make_figure(df, relative=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Simulation 2: Average vs worst-case')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--rerun', action='store_true',
                         help='Force rerun even if cached results exist')
     args = parser.parse_args()
