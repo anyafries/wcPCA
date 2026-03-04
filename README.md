@@ -56,6 +56,10 @@ Benchmarks maxRCS against published baselines on the objectives MM\_Var and MM\_
 | `fairpca.py` | Runs FairPCA via SDP and multiplicative weights (Tantipongpipat et al., NeurIPS 2019) |
 | `stablepca.py` | Runs StablePCA |
 
+```diff
+! TODO: StablePCA ref + add links.
+```
+
 Usage: 
 ```bash
 cd comparison
