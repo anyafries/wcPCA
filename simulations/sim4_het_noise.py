@@ -1,10 +1,10 @@
 """
-Simulation 4: Heterogeneous Noise
+Simulation 4: Heterogeneous noise
 
 Compares maxRCS and maxRegret objectives when training data has
 heterogeneous measurement noise that is not present in test data.
 
-Output: figures/sim_heterogeneous_noise_empirical.png
+Output: figures/sim4_het_noise_XXXXX.png
 """
 
 import argparse
@@ -36,7 +36,7 @@ EMPIRICAL = True  # whether to use empirical data
 
 SUFFIX = f'{'emp' if EMPIRICAL else 'pop'}_ub{int(UB_NOISE*100)}'
 RESULTS_FILE = f'results/sim4_het_noise_{SUFFIX}.csv'
-FIGURE_FILE = f'figures/sim_heterogeneous_noise_{SUFFIX}.pdf'
+FIGURE_FILE = f'figures/sim4_het_noise_{SUFFIX}.pdf'
 
 # Plot palette
 PALETTE = {
@@ -170,7 +170,7 @@ def make_figure(df):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Simulation 4: Heterogeneous noise')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--rerun', action='store_true',
                         help='Force rerun even if cached results exist')
     args = parser.parse_args()
