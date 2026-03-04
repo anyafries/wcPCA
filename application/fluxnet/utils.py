@@ -93,7 +93,7 @@ def loo_time_split(
     Xs_train = []
     for env in train_envs:
         Xs_train.append(Xs_dict[env])
-    covs = [torch.cov(X.T) for X in Xs_train]
+    covs = [torch.cov(X.T, correction=0) for X in Xs_train]
 
     Xpool = Xpool_df_in[environments.isin(train_envs)]
     Xpool_test = Xpool_df_in[environments.isin(test_envs)]

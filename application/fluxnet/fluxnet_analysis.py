@@ -42,10 +42,11 @@ N_COMPONENTS = 6       # Maximum number of components to compute
 NUM_SPLITS = 20        # Number of random train/test splits for many-splits analysis
 N_RESTARTS = 10        # Number of restarts for minPCA optimization
 SEED = 5               # Seed for the single-split analysis
-N_PCS = 1              # Number of PCs for Plot 4 (environment comparison)
+N_PCS = 2              # Number of PCs for Plot 4 (environment comparison)
 
 # Method names (as used in the results dataframes)
 BASE_METHOD = 'PCA'          # baseline method
+MAIN_METHOD = 1 # index of the main method
 COMPARISON_METHODS = ['regret', 'norm-regret', 'norm-maxRCS', 'avgcovPCA']  # minPCA method
 
 # Display labels for legends
@@ -99,7 +100,10 @@ def load_and_preprocess_data():
     Q3 = minpca_df.quantile(0.75)
     IQR = Q3 - Q1
     cutoff = 2
-    filter_mask = ~((minpca_df < (Q1 - cutoff * IQR)) | (minpca_df > (Q3 + cutoff * IQR))).any(axis=1)
+    filter_mask = ~(
+        (minpca_df < (Q1 - cutoff * IQR)) | 
+        (minpca_df > (Q3 + cutoff * IQR))
+    ).any(axis=1)
 
     # Keep only complete rows
     filter_mask = filter_mask & ~minpca_df.isna().any(axis=1)
@@ -161,6 +165,8 @@ def run_many_splits(X_poolscale_df, environments, env_dfs_envmeanzero,
     wc_out_path = RESULTS_DIR / f"wc_out_all_df{cache_suffix}.csv"
     pool_in_path = RESULTS_DIR / f"pool_in_all_df{cache_suffix}.csv"
     pool_out_path = RESULTS_DIR / f"pool_out_all_df{cache_suffix}.csv"
+    cache_suffix2 = f"_seed{SEED}_restarts{n_restarts * 2}_ncomp{n_components}"
+    out_ts_path = RESULTS_DIR / f"out_ts{cache_suffix2}.csv"
 
     if not rerun and wc_in_path.exists() and wc_out_path.exists():
         print("Loading cached many-splits results...")
@@ -168,7 +174,8 @@ def run_many_splits(X_poolscale_df, environments, env_dfs_envmeanzero,
         wc_out_df = pd.read_csv(wc_out_path)
         pool_in_df = pd.read_csv(pool_in_path)
         pool_out_df = pd.read_csv(pool_out_path)
-        return wc_in_df, wc_out_df, pool_in_df, pool_out_df
+        out_single_run = pd.read_csv(out_ts_path)
+        return wc_in_df, wc_out_df, pool_in_df, pool_out_df, out_single_run
 
     out_lists = {
         'wc_in': [],
@@ -176,6 +183,7 @@ def run_many_splits(X_poolscale_df, environments, env_dfs_envmeanzero,
         'pool_in': [],
         'pool_out': [],
     }
+    out_single_run = None
 
     for seed in range(num_splits):
         print(f"Processing split {seed + 1}/{num_splits}...")
@@ -194,8 +202,11 @@ def run_many_splits(X_poolscale_df, environments, env_dfs_envmeanzero,
             n_components=n_components,
         )
 
-        out_ts2 = out_ts.copy() #[~out_ts['method'].isin(['avgcovPCA', 'avgcovPCA_train'])]
-        
+        if seed == SEED:
+            out_single_run = out_ts.copy()
+            out_ts.to_csv(out_ts_path, index=False)
+
+        out_ts2 = out_ts.copy() 
         for key in out_lists.keys():
             if key in ['wc_in', 'wc_out']:
                 df = out_ts2[~out_ts2['environment'].isin(
@@ -234,7 +245,7 @@ def run_many_splits(X_poolscale_df, environments, env_dfs_envmeanzero,
     pool_in_df.to_csv(pool_in_path, index=False)
     pool_out_df.to_csv(pool_out_path, index=False)
 
-    return wc_in_df, wc_out_df, pool_in_df, pool_out_df
+    return wc_in_df, wc_out_df, pool_in_df, pool_out_df, out_single_run
 
 
 def run_single_split(X_poolscale_df, environments, env_dfs_envmeanzero,
@@ -259,7 +270,7 @@ def run_single_split(X_poolscale_df, environments, env_dfs_envmeanzero,
         print("Loading cached single-split results...")
         out_ts = pd.read_csv(out_ts_path)
     else:
-        out_ts, components_ts = loo_time_split(
+        out_ts, _ = loo_time_split(
             Xpool_df_in=X_poolscale_df,
             environments=environments,
             Xs_dict=env_dfs_envmeanzero,
@@ -270,7 +281,7 @@ def run_single_split(X_poolscale_df, environments, env_dfs_envmeanzero,
         )
         out_ts.to_csv(out_ts_path, index=False)
 
-    return out_ts, train_envs, test_envs, env_dfs_envmeanzero
+    return out_ts
 
 
 # =============================================================================
@@ -279,56 +290,63 @@ def run_single_split(X_poolscale_df, environments, env_dfs_envmeanzero,
 
 def compare_errs_across_methods(df, ax, y, 
                                 num_components=2, 
-                                variance=False, 
-                                legend=True):
+                                relative=True,
+                                variance=False):
     df_sub = df[df['n_components'] == num_components]
     diffs = []
     relative_diffs = []
     names = []
+
+    train = ('PCA_train' in df_sub['method'].unique())
+    base_method = f'{BASE_METHOD}_train' if train else BASE_METHOD
+    comparison_methods = [f'{m}_train' if train else m for m in COMPARISON_METHODS]
+
     for seed in df_sub['seed'].unique():
-        df1 = df_sub[(df_sub['method'] == BASE_METHOD) & (df_sub['seed'] == seed)]
-        for method2, method2_label in zip(COMPARISON_METHODS, COMPARISON_METHODS_LABEL):
+        df1 = df_sub[(df_sub['method'] == base_method) & (df_sub['seed'] == seed)]
+        for method2, method2_label in zip(comparison_methods, COMPARISON_METHODS_LABEL):
             df2 = df_sub[(df_sub['method'] == method2) & (df_sub['seed'] == seed)]
             diff = df2[y].values - df1[y].values
             if variance:
                 diff = -diff # for variance, higher is better so flip the sign
-            assert len(diff) == 1
+            assert len(diff) == 1, print(diff, method2, seed)
             diffs.append(diff[0])
             names.append(method2_label)
-            relative_diffs.append(diff[0] / df1[y].values[0] * 100)
+            relative_diffs.append(diff[0] / df1[y].values[0])
     
     df = pd.DataFrame({
         'method': names,
         'diff': diffs,
         'relative_diff': relative_diffs,
     })
+    # print(df[df['method'] == COMPARISON_METHODS_LABEL[MAIN_METHOD]])
     print(df.groupby('method')[['relative_diff', 'diff']].median().reset_index())
-    sns.boxplot(data=df, x='method', y='diff', ax=ax, width=0.7,
+    sns.boxplot(data=df, x='method', 
+                y='relative_diff' if relative else 'diff', ax=ax, width=0.7,
                 linewidth=1, order=COMPARISON_METHODS_LABEL,
                 boxprops=dict(facecolor="#A4D4E0"), fliersize=3)
     
 
 def plot_boxplot_npcs(wc_out_df, num_components=2, y='err', average=False,
-                      save_path=None):
+                      save_path=None, source=False, relative=True):
     fig, ax = plt.subplots(figsize=(2.5, 2.5), sharey=False)
     compare_errs_across_methods(
         wc_out_df, ax, y,
         num_components=num_components,
-        variance=False
+        variance=False, relative=relative
     )
     ax.axhline(0, color='black', linestyle='--', linewidth=0.8)
-    if average:
-        ylabel = 'Difference in target \naverage \% expl. var.'
-    else:
-        ylabel = 'Difference in target \nworst-case \%  expl. var.'
+    metric = 'average' if average else 'worst-case'
+    domain = 'source' if source else 'target'
+    ylabel = r'Relative $\Delta$' if relative else 'Difference'
+    ylabel += f' {metric}\n{domain} \\% expl. var.'
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Method')
     ax.tick_params(axis='x', rotation=90)
     ax.text(1.07, 0, '→ worse',
-            transform=ax.get_yaxis_transform(),  # x in axes coords, y in data coords
+            transform=ax.get_yaxis_transform(),
             rotation=90, va='bottom', ha='left', fontsize=8)
     ax.text(1.07, 0, 'poolPCA better ←',
-            transform=ax.get_yaxis_transform(),  # x in axes coords, y in data coords
+            transform=ax.get_yaxis_transform(),
             rotation=90, va='top', ha='left', fontsize=8)
     plt.tight_layout()
     if save_path:
@@ -405,7 +423,7 @@ def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label,
         ax[1].set_title('Target regions', fontsize=8)
         ax[1].set_xlabel('Number of PCs', fontsize=7)
         if method_label:
-            plt.suptitle(f"{method_label} vs.\ {BASE_METHOD_LABEL}", x=0, y=0.92,
+            plt.suptitle(f"{method_label} vs. {BASE_METHOD_LABEL}", x=0, y=0.92,
                          ha='left', va='top', fontsize=9, fontweight='bold')
         plt.tight_layout()
         if save_path:
@@ -451,7 +469,7 @@ def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
             ax_row[0].set_xlabel('Number of PCs', fontsize=7)
             ax_row[1].set_xlabel('Number of PCs', fontsize=7)
 
-        ax_row[0].set_ylabel(r'$\Delta$ worst-case \% expl. var.', fontsize=6)
+        ax_row[0].set_ylabel(r'$\Delta$ worst-case \\% expl. var.', fontsize=6)
 
     # Set column titles only on top row
     axes[0, 0].set_title('Source regions', fontsize=8)
@@ -486,10 +504,10 @@ def plot_scree(environments, env_dfs, save_path=None):
     plt.close()
 
 
-def plot_environment_comparison(out_ts, train_envs, test_envs, 
-                                method=COMPARISON_METHODS[0], 
-                                method_label=COMPARISON_METHODS_LABEL[0],
-                                n_pcs=N_PCS,
+def plot_environment_comparison(out_ts,
+                                method=COMPARISON_METHODS[MAIN_METHOD], 
+                                method_label=COMPARISON_METHODS_LABEL[MAIN_METHOD],
+                                n_pcs=N_PCS, ylim=[None, None],
                                 x_order1=None, x_order2=None, save_path=None):
     """
     Plot 4: Line plots showing % explained variance per environment.
@@ -498,12 +516,10 @@ def plot_environment_comparison(out_ts, train_envs, test_envs,
     ----------
     out_ts : pd.DataFrame
         Results from loo_time_split
-    train_envs : list
-        Training environment names
-    test_envs : list
-        Test environment names
     n_pcs : int
         Number of PCs to show
+    ylim : list of 2 floats
+        Y-axis limits for the two subplots (source and target)
     x_order1 : list or None
         Order for source regions x-axis (use environment_tag values)
     x_order2 : list or None
@@ -511,7 +527,7 @@ def plot_environment_comparison(out_ts, train_envs, test_envs,
     save_path : str or None
         Path to save figure
     """
-    out_ts2 = out_ts.copy() #[~out_ts['method'].isin(['avgcovPCA', 'avgcovPCA_train'])].copy()
+    out_ts2 = out_ts[out_ts['n_components'] == n_pcs].copy() 
 
     # Create environment tags (shortened names)
     out_ts2['environment_tag'] = (out_ts2['environment']
@@ -523,12 +539,9 @@ def plot_environment_comparison(out_ts, train_envs, test_envs,
 
     # Source regions (training)
     yy = out_ts2[out_ts2['method'].isin([f'{BASE_METHOD}_train', f'{method}_train'])].copy()
-    yy = yy[yy['n_components'] == n_pcs].reset_index(drop=True)
 
     # Target regions (test)
     zz = out_ts2[out_ts2['method'].isin([BASE_METHOD, method])].copy()
-    zz = zz[zz['environment'].isin(test_envs)].copy()
-    zz = zz[zz['n_components'] == n_pcs].reset_index(drop=True)
 
     # Apply custom ordering if provided
     if x_order1 is not None:
@@ -547,18 +560,19 @@ def plot_environment_comparison(out_ts, train_envs, test_envs,
         )
         zz = zz.sort_values('environment_tag').reset_index(drop=True)
 
-    fig, ax = plt.subplots(1, 2, figsize=(5.1, 2.5), sharey=False, 
+    fig, ax = plt.subplots(1, 2, figsize=(5.3, 2.5), sharey=False, 
                            width_ratios=[1, 1.3])
 
     for i, df in enumerate([yy, zz]):
         sns.lineplot(data=df, x='environment_tag', y='var', hue='method',
                      marker='o', palette=['tab:blue', 'tab:red'], ax=ax[i])
+        ax[i].set_ylim(ylim[i])
         ax[i].tick_params(axis='x', rotation=30, labelsize=7)
         for label in ax[i].get_xticklabels():
             label.set_ha('right')
         domain = 'Source' if i == 0 else 'Target'
         ax[i].set_xlabel(f'{domain} regions')
-        ax[i].set_ylabel('\\% explained variance')
+        ax[i].set_ylabel('\n\\% explained variance')
 
         # Add annotation arrow for worst environment
         worst_env = df.loc[df['var'].idxmin()]['environment']
@@ -625,7 +639,7 @@ def main(rerun=False):
     # Many splits analysis 
     # -------------------------------------------------------------------------
     print("Running many-splits analysis...")
-    wc_in_df, wc_out_df, pool_in_df, pool_out_df = run_many_splits(
+    wc_in_df, wc_out_df, pool_in_df, pool_out_df, out_single = run_many_splits(
         X_poolscale_df, environments, env_dfs_envmeanzero, rerun=rerun
     )
 
@@ -636,7 +650,7 @@ def main(rerun=False):
         ranks = []
         seeds = []
         for seed in wc_in_df['seed'].unique():
-            m1, m2 = COMPARISON_METHODS[0], BASE_METHOD
+            m1, m2 = COMPARISON_METHODS[MAIN_METHOD], BASE_METHOD
             if i == 0:
                 m1 = f'{m1}_train'
                 m2 = f'{m2}_train'
@@ -661,35 +675,27 @@ def main(rerun=False):
     n_positive_in = np.sum(df_in[df_in['n_components'] == N_PCS - 1]['diff'] > 0)
     n_positive_out = np.sum(df_out[df_out['n_components'] == N_PCS - 1]['diff'] > 0)
     n_total = len(df_in[df_in['n_components'] == N_PCS - 1])
-    print(f"Summary of improvements for {COMPARISON_METHODS_LABEL[0]}:")
+    print(f"Summary of improvements for {COMPARISON_METHODS_LABEL[MAIN_METHOD]}:")
     print(f"Splits with positive improvement at {N_PCS} PCs:")
     print(f"  In-sample (source): {n_positive_in}/{n_total}")
     print(f"  Out-of-sample (target): {n_positive_out}/{n_total}")
 
     # -------------------------------------------------------------------------
-    # Single split analysis (for Introduction)
-    # -------------------------------------------------------------------------
-    print("\nRunning single-split analysis...")
-    out_ts, train_envs, test_envs, env_dfs = run_single_split(
-        X_poolscale_df, environments, env_dfs_envmeanzero, rerun=rerun
-    )
-
-    # -------------------------------------------------------------------------
     # Pooled results comparison
     # -------------------------------------------------------------------------
     print("\nPooled results:")
-    pool_outsample = out_ts[out_ts['environment'] == 'pooled (out-of-sample)']
-    pool_insample = out_ts[out_ts['environment'] == 'pooled (in-sample)']
+    pool_outsample = out_single[out_single['environment'] == 'pooled (out-of-sample)']
+    pool_insample = out_single[out_single['environment'] == 'pooled (in-sample)']
 
     aa = pool_outsample[pool_outsample['n_components'] == N_PCS]
-    a1 = aa[aa['method'] == COMPARISON_METHODS[0]]['var'].values[0]
+    a1 = aa[aa['method'] == COMPARISON_METHODS[MAIN_METHOD]]['var'].values[0]
     a2 = aa[aa['method'] == BASE_METHOD]['var'].values[0]
 
     bb = pool_insample[pool_insample['n_components'] == N_PCS]
-    b1 = bb[bb['method'] == COMPARISON_METHODS[0]]['var'].values[0]
+    b1 = bb[bb['method'] == COMPARISON_METHODS[MAIN_METHOD]]['var'].values[0]
     b2 = bb[bb['method'] == BASE_METHOD]['var'].values[0]
 
-    label = COMPARISON_METHODS_LABEL[0]
+    label = COMPARISON_METHODS_LABEL[MAIN_METHOD]
     print(f"  Out-of-sample rel decrease for {label}: {(a1-a2)/a2 * 100:.3f}%")
     print(f"  In-sample rel decrease for {label}: {(b1-b2)/b2 * 100:.3f}%")
 
@@ -712,28 +718,32 @@ def main(rerun=False):
 
     # Plot 2: Boxplot comparison (main, only 2 PCs)
     print(f"  Plot 2: Boxplot comparison for {N_PCS} PCs")
-    print(f"    Worst-case difference")
-    plot_boxplot_npcs(
-        wc_out_df, num_components=N_PCS, y='var',
-        save_path=FIGURES_DIR / "fluxnet_boxplot_npcs_worst-case.pdf"
-    )
-    print(f"    Average difference")
-    plot_boxplot_npcs(
-        pool_out_df, num_components=N_PCS, y='var', average=True,
-        save_path=FIGURES_DIR / "fluxnet_boxplot_npcs_average.pdf"
-    )
+    for domain in ['source', 'target']:
+        for metric in ['worst-case', 'average']:
+            if metric == 'worst-case':
+                df = wc_in_df if domain == 'source' else wc_out_df
+            else:
+                df = pool_in_df if domain == 'source' else pool_out_df
+            print(f"---> Median {metric} {domain} difference")
+            plot_boxplot_npcs(
+                df,
+                num_components=N_PCS, y='var',
+                average=(metric == 'average'), source=(domain == 'source'),
+                save_path=FIGURES_DIR / f"fluxnet_boxplot_npcs_{domain}_{metric}.pdf"
+            )
 
     # Plot 3: Scree plot
     print("  Plot 3: Scree plot")
     plot_scree(
-        train_envs + test_envs, env_dfs,
+        environments.unique(), env_dfs_envmeanzero,
         save_path=FIGURES_DIR / "fluxnet_scree_plot.pdf"
     )
 
     # Plot 4: Environment comparison
     print("  Plot 4: Environment comparison")
     plot_environment_comparison(
-        out_ts, train_envs, test_envs, n_pcs=N_PCS,
+        out_single, n_pcs=N_PCS,
+        method='norm-regret', method_label='norm-maxRegret',
         x_order1=x_order1, x_order2=x_order2,
         save_path=FIGURES_DIR / "fluxnet_environment_comparison.png"
     )
