@@ -80,8 +80,8 @@ def make_figure(data):
 
     # Contour parameters
     kw = {
-        'vmin': np.min([np.min(z_pdf1), np.min(x_pdf2)]),
-        'vmax': np.max([np.max(z_pdf1), np.max(x_pdf2)]),
+        'vmin': 1.3*np.min([np.min(z_pdf1), np.min(x_pdf2)]),
+        'vmax': 1.3*np.max([np.max(z_pdf1), np.max(x_pdf2)]),
         'alpha': 0.9
     }
     kw['levels'] = np.linspace(kw['vmin'], kw['vmax'], 10)
@@ -114,30 +114,41 @@ def make_figure(data):
     z = np.linspace(-zmax, zmax, 10)
 
     # Add transparent XY plane at Z = 0
-    X, Y = np.meshgrid(x, y)
+    plane_scale = 0.85
+    X, Y = np.meshgrid(plane_scale*x, plane_scale*y)
     Z = np.zeros_like(X)
     ax.plot_surface(X, Y, Z, alpha=0.1, color=color2, label='E=1')
 
     # Add transparent YZ plane at X = 0
-    Y, Z = np.meshgrid(y, z)
+    Y, Z = np.meshgrid(plane_scale*y, plane_scale*z)
     X = np.zeros_like(Y)
     ax.plot_surface(X, Y, Z, alpha=0.1, color=color1, label='E=2')
 
     # Add contours for the PDFs
-    ax.contour(x1, y1, z_pdf1, cmap=cmap2, zdir='z', zorder=3, offset=0, **kw)
-    ax.contour(x_pdf2, y2, z2, cmap=cmap1, zdir='x', zorder=4, offset=0, **kw)
+    ax.contour(x1, y1, z_pdf1, cmap=cmap2, zdir='z', zorder=2, offset=0, **kw)
+    ax.contour(x_pdf2, y2, z2, cmap=cmap1, zdir='x', zorder=2, offset=0, **kw)
 
     # Draw axis lines through origin
-    correction = 1.2
+    correction = 1
     ax.plot(correction * np.array([-xmax, xmax]), [0, 0], [0, 0],
             color='black', lw=0.8)
     ax.plot([0, 0], correction * np.array([-ymax, ymax]), [0, 0],
             color='black', lw=0.8)
     ax.plot([0, 0], [0, 0], correction * np.array([-zmax, zmax]),
             color='black', lw=0.8)
+    
+    # Add axis labels
+    correction2 = correction+0.05
+    axis_label_args = {
+        'color': 'k', 'fontsize': font2, 'zorder': 10,
+        'horizontalalignment': 'center', 'verticalalignment': 'center'
+    }
+    ax.text(correction2 * xmax, 0, 0, 'x', **axis_label_args)
+    ax.text(0, -1.03 * correction2 * ymax, 0, 'y', **axis_label_args)
+    ax.text(0, 0, correction2 * zmax, 'z', **axis_label_args)
 
     # Arrow scale and tips
-    arrow_scale = 2
+    arrow_scale = 1.7
     tip1 = arrow_scale * V_MINPCA
     tip2 = arrow_scale * V_POOL
     tip3 = arrow_scale * V_SEP
@@ -200,27 +211,19 @@ def make_figure(data):
 
     # Set plot limits
     lims_adjust = [l * 1.7 for l in lims]
-    ax.set(xlim=lims_adjust[0], ylim=lims_adjust[1], zlim=lims_adjust[2])
-
-    # Add axis labels
-    correction2 = 1.25
-    axis_label_args = {
-        'color': 'k', 'fontsize': font2, 'zorder': 10,
-        'horizontalalignment': 'center', 'verticalalignment': 'center'
-    }
-    ax.text(correction2 * xmax, 0, 0, 'x', **axis_label_args)
-    ax.text(0, -1.03 * correction2 * ymax, 0, 'y', **axis_label_args)
-    ax.text(0, 0, correction2 * zmax, 'z', **axis_label_args)
+    ax.set(xlim=lims_adjust[0], ylim=lims_adjust[1], 
+           zlim=lims_adjust[2])
+        #    zlim=[0.5*lims_adjust[2][0], lims_adjust[2][1]])
 
     # Add legend
     handles, labels = ax.get_legend_handles_labels()
     labels = [label.replace('E=', 'domain ') for label in labels]
     ax.legend(
         handles, labels,
-        loc=(0.25, 0.3),
-        fontsize=font3,
+        loc=(0.16, 0.36),
+        fontsize=font2,
         title='Support of distribution in',
-        title_fontsize=str(font3),
+        title_fontsize=str(font2),
         frameon=False
     )
 
