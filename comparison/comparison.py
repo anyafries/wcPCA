@@ -5,13 +5,15 @@ Runs all comparison methods (FairPCA, minPCA, StablePCA) and generates
 comparison figures.
 
 Usage:
-    python comparison.py              # Run all methods and generate plots
-    python comparison.py --rerun      # Force rerun all methods
+    python comparison.py --start_seed 2 --end_seed 11   # Run all methods and generate plots
+    python comparison.py --start_seed 2 --end_seed 11 --rerun  # Force rerun all methods
+    python comparison.py --start_seed 2 --end_seed 11 --plots_only  # Only generate plots
 
-Output:
-    figures/comparison_MM_Var.png
-    figures/comparison_MM_Loss.png
-    figures/comparison_{objective}_p{p}_ncomp{n}_ne{e}.png (individual plots)
+Output (individual, one per (p, n_envs, objective)):
+    figures/comparison_relative_{objective}_p{p}_ncomp{n}_ne{e}.png
+
+Output (combined, one per objective):
+    figures/comparison_relative_{objective}.png
 """
 
 import argparse
@@ -21,7 +23,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 
 
 # === Constants ===
@@ -29,6 +30,7 @@ SCRIPT_DIR = Path(__file__).parent
 RESULTS_DIR = SCRIPT_DIR / 'results'
 FIGURES_DIR = SCRIPT_DIR / 'figures'
 N_COMPONENTS = 5
+SEED = 2
 
 PARAM_CONFIGS = [(10, 5), (10, 50), (50, 5)]
 OBJECTIVES = ['MM_Var', 'MM_Loss']
@@ -40,214 +42,292 @@ COLORS = {
     'StablePCA': 'tab:green',
 }
 
-PLOT_KWARGS = {
-    'ms': 3,
-    'linewidth': 0.5,
-    'markeredgewidth': 0,
-    'hue': 'Method',
-    'style': 'Method',
-    'markers': True,
-}
 
-
-def run_all_methods(rerun=False):
+def run_all_methods(rerun=False, start_seed=SEED, end_seed=SEED):
     """Run all comparison methods via subprocess."""
     rerun_flag = ['--rerun'] if rerun else []
+    seed_args = ['--start_seed', str(start_seed), '--end_seed', str(end_seed)]
 
     # Run FairPCA (SDP + MW)
     print("\n=== Running FairPCA ===")
     subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'fairpca.py')] + rerun_flag,
+        [sys.executable, str(SCRIPT_DIR / 'fairpca.py')] + rerun_flag + seed_args,
         check=True
     )
 
     # Run minPCA (PGD)
     print("\n=== Running minPCA ===")
     subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'minpca_sim.py')] + rerun_flag,
+        [sys.executable, str(SCRIPT_DIR / 'minpca_sim.py')] + rerun_flag + seed_args,
         check=True
     )
 
     # Run StablePCA (MM_Var only)
     print("\n=== Running StablePCA ===")
     subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'stablepca.py')] + rerun_flag,
+        [sys.executable, str(SCRIPT_DIR / 'stablepca.py')] + rerun_flag + seed_args,
         check=True
     )
 
 
-def load_results(p, n_envs, objective):
-    """Load results from all methods for given configuration."""
-    suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}.csv"
+def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
+    """Load multi-seed results from all methods for a given configuration.
 
-    # Load minPCA results
-    df_minpca = pd.read_csv(RESULTS_DIR / f"minPCA{suffix}")
-    df_minpca['Method'] = 'PGD'
-    df_minpca['obj'] = df_minpca['minvar']
+    Seeds are filtered to those for which all required methods have results.
+    A warning is printed for any dropped seeds.
 
-    # Load SDP results
-    df_sdp = pd.read_csv(RESULTS_DIR / f"SDP{suffix}")
-    df_sdp['Method'] = 'SDP'
-    df_sdp['obj'] = df_sdp['obj_trunc']
-    df_sdp['rank'] = df_sdp['d']
+    Returns a DataFrame with columns: rank, obj, time, Method, seed
+    """
+    all_dfs = []
+    dropped_seeds = []
 
-    # Load MW results
-    df_mw = pd.read_csv(RESULTS_DIR / f"MW{suffix}")
-    df_mw['Method'] = 'MW'
-    df_mw['rank'] = df_mw['d']
+    for seed in range(start_seed, end_seed + 1):
+        suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
 
-    dfs = [df_minpca, df_sdp, df_mw]
+        files = {
+            'PGD': RESULTS_DIR / f"minPCA{suffix}",
+            'SDP': RESULTS_DIR / f"SDP{suffix}",
+            'MW': RESULTS_DIR / f"MW{suffix}",
+        }
+        if objective == 'MM_Var':
+            files['StablePCA'] = RESULTS_DIR / f"stablepca{suffix}"
 
-    # Load StablePCA results (only for MM_Var)
-    if objective == "MM_Var":
-        stablepca_file = RESULTS_DIR / f"stablepca{suffix}"
-        if stablepca_file.exists():
-            df_stablepca = pd.read_csv(stablepca_file)
+        missing = [name for name, f in files.items() if not f.exists()]
+        if missing:
+            dropped_seeds.append((seed, missing))
+            continue
+
+        # Load minPCA results
+        df_minpca = pd.read_csv(files['PGD'])
+        df_minpca['Method'] = 'PGD'
+        df_minpca['obj'] = df_minpca['minvar']
+        df_minpca['seed'] = seed
+
+        # Load SDP results
+        df_sdp = pd.read_csv(files['SDP'])
+        df_sdp['Method'] = 'SDP'
+        df_sdp['obj'] = df_sdp['obj_trunc']
+        df_sdp['rank'] = df_sdp['d']
+        df_sdp['seed'] = seed
+
+        # Load MW results
+        df_mw = pd.read_csv(files['MW'])
+        df_mw['Method'] = 'MW'
+        df_mw['rank'] = df_mw['d']
+        df_mw['seed'] = seed
+
+        seed_dfs = [df_minpca, df_sdp, df_mw]
+
+        if objective == 'MM_Var':
+            df_stablepca = pd.read_csv(files['StablePCA'])
             df_stablepca['Method'] = 'StablePCA'
             df_stablepca['obj'] = df_stablepca['minvar']
-            dfs.append(df_stablepca)
+            df_stablepca['seed'] = seed
+            seed_dfs.append(df_stablepca)
 
-    df = pd.concat(dfs, ignore_index=True)
+        all_dfs.extend(seed_dfs)
+
+    if dropped_seeds:
+        for seed, missing in dropped_seeds:
+            print(f"Warning: Dropping seed {seed} for p={p}, n_envs={n_envs}, "
+                  f"{objective}: missing results for {missing}")
+
+    if not all_dfs:
+        raise FileNotFoundError(
+            f"No complete results found for p={p}, n_envs={n_envs}, {objective} "
+            f"in seed range [{start_seed}, {end_seed}]"
+        )
+
+    df = pd.concat(all_dfs, ignore_index=True)
 
     # Filter ranks for large p
     if p == 50:
         df = df[df['rank'] <= 30]
 
-    if objective == "MM_Loss":
-        df['obj'] = - df['obj']
+    if objective == 'MM_Loss':
+        df['obj'] = -df['obj']
 
     return df
 
 
-def make_individual_plot(p, n_envs, objective):
-    """Create individual comparison plot for one configuration."""
-    suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}"
+def _add_relative_perf(df):
+    """Add 'rel' column: (PGD_obj - method_obj) / |PGD_obj| per (rank, seed)."""
+    df_pgd = (df[df['Method'] == 'PGD'][['rank', 'seed', 'obj']]
+              .rename(columns={'obj': 'pgd_obj'}))
+    df = df.merge(df_pgd, on=['rank', 'seed'])
+    df['rel'] = (df['pgd_obj'] - df['obj']) / df['pgd_obj'].abs()
+    return df
 
-    df = load_results(p, n_envs, objective)
 
-    fig, ax = plt.subplots(1, 2, figsize=(4.5, 1.4))
+def _plot_percentile_lines(ax, df, y_col, methods):
+    """Plot median line + 25th/75th percentile band per method."""
+    for method in methods:
+        df_m = df[df['Method'] == method]
+        stats = df_m.groupby('rank')[y_col].quantile([0.25, 0.5, 0.75]).unstack()
+        color = COLORS[method]
+        ax.plot(stats.index, stats[0.5], color=color, label=method, linewidth=1.0)
+        ax.fill_between(stats.index, stats[0.25], stats[0.75],
+                        color=color, alpha=0.2, linewidth=0)
 
-    # Objective plot
-    sns.lineplot(data=df, x='rank', y='obj', ax=ax[0], palette=COLORS, **PLOT_KWARGS)
-    ax[0].set_xlabel('Rank of solution')
-    if objective == "MM_Var":
-        ax[0].set_ylabel('- minimum\n variance')
-    else:
-        ax[0].set_ylabel('Maximum \nregret')
 
-    # Time plot
-    sns.lineplot(data=df, x='rank', y='time', ax=ax[1], palette=COLORS, **PLOT_KWARGS)
-    ax[1].set_xlabel('Rank of solution')
-    ax[1].set_ylabel('\nTime (s)')
+def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
+    """Create individual relative performance plot for one (p, n_envs, objective).
 
-    # Legend
-    handles, labels = ax[0].get_legend_handles_labels()
-    ax[0].legend_.remove()
-    ax[1].legend_.remove()
-    fig.legend(handles, labels, loc='center right',
-               bbox_to_anchor=(1.1, 0.55), frameon=False)
+    Saved as: figures/comparison_relative_{objective}_p{p}_ncomp{n}_ne{e}.png
+    Left subplot:  relative gap vs PGD (median + IQR band), non-PGD methods only
+    Right subplot: runtime (median + IQR band), all methods
+    """
+    df = load_results(p, n_envs, objective, start_seed, end_seed)
+    df = _add_relative_perf(df)
+
+    if p == 50:
+        df = df[df['rank'] % 2 == 1]
+
+    available_methods = df['Method'].unique()
+    non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
+    all_methods = [m for m in ['PGD', 'SDP', 'MW', 'StablePCA'] if m in available_methods]
+
+    fig, axes = plt.subplots(1, 2, figsize=(4.5, 1.8))
+
+    # Relative performance subplot (left)
+    _plot_percentile_lines(axes[0], df[df['Method'].isin(non_pgd)], 'rel', non_pgd)
+    axes[0].axhline(0, color='black', linewidth=0.5, linestyle='--')
+    axes[0].set_xlabel('Rank of solution')
+    axes[0].set_ylabel('Relative gap\nvs PGD')
+
+    # Runtime subplot (right)
+    _plot_percentile_lines(axes[1], df, 'time', all_methods)
+    axes[1].set_xlabel('Rank of solution')
+    axes[1].set_ylabel('Time (s)')
+
+    # Shared legend (combine entries from both subplots without duplicates)
+    all_labels_seen = set()
+    legend_handles, legend_labels = [], []
+    for ax in axes:
+        h, l = ax.get_legend_handles_labels()
+        for handle, label in zip(h, l):
+            if label not in all_labels_seen:
+                legend_handles.append(handle)
+                legend_labels.append(label)
+                all_labels_seen.add(label)
+
+    fig.legend(legend_handles, legend_labels, loc='center right',
+               bbox_to_anchor=(1.12, 0.55), frameon=False)
     fig.tight_layout(rect=[0, 0, 0.85, 1])
 
-    fig_path = FIGURES_DIR / f"comparison{suffix}.png"
+    suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}"
+    fig_path = FIGURES_DIR / f"comparison_relative{suffix}.png"
     plt.savefig(fig_path, dpi=400, bbox_inches='tight')
     plt.close()
     print(f"Saved: {fig_path.name}")
 
 
-def make_combined_plot(objective):
-    """Create combined comparison plot (3 configs x 2 metrics)."""
+def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
+    """Create combined relative performance plot (3 configs × 2 metrics).
+
+    Saved as: figures/comparison_relative_{objective}.png
+    Top row:    relative gap vs PGD for each param config
+    Bottom row: runtime for each param config
+    """
     plt.style.use(str(SCRIPT_DIR.parent / 'jmlr.mplstyle'))
 
-    fig, ax = plt.subplots(2, 3, figsize=(6, 3.1))
+    fig, ax = plt.subplots(2, 3, figsize=(6, 3.5))
+
+    legend_handles, legend_labels = [], []
 
     for i, (p, n_envs) in enumerate(PARAM_CONFIGS):
-        df = load_results(p, n_envs, objective)
+        df = load_results(p, n_envs, objective, start_seed, end_seed)
+        df = _add_relative_perf(df)
 
-        # Filter for better visibility on large p
         if p == 50:
-            df = df[df['rank'] % 2 == 1]  # Keep odd ranks only
+            df = df[df['rank'] % 2 == 1]
 
-        # Objective plot (top row)
-        sns.lineplot(data=df, x='rank', y='obj', ax=ax[0, i], palette=COLORS, **PLOT_KWARGS)
+        available_methods = df['Method'].unique()
+        non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
+        all_methods = [m for m in ['PGD', 'SDP', 'MW', 'StablePCA'] if m in available_methods]
+
+        # Relative performance (top row)
+        _plot_percentile_lines(ax[0, i], df[df['Method'].isin(non_pgd)], 'rel', non_pgd)
+        ax[0, i].axhline(0, color='black', linewidth=0.5, linestyle='--')
         ax[0, i].set_title(f"p={p}, E={n_envs}\n", fontsize=10)
         ax[0, i].set_xlabel('Rank of solution')
         if i == 0:
-            if objective == "MM_Var":
-                ax[0, i].set_ylabel('Minimum\nexplained variance')
-            else:
-                ax[0, i].set_ylabel('Minimum\nregret')
-        else:
-            ax[0, i].set_ylabel('')
+            ax[0, i].set_ylabel('Relative gap\nvs PGD')
 
-        # Time plot (bottom row)
-        sns.lineplot(data=df, x='rank', y='time', ax=ax[1, i], palette=COLORS, **PLOT_KWARGS)
+        # Runtime (bottom row)
+        _plot_percentile_lines(ax[1, i], df, 'time', all_methods)
         ax[1, i].set_xlabel('Rank of solution')
         if i == 0:
-            ax[1, i].set_ylabel('\nTime (s)')
-        else:
-            ax[1, i].set_ylabel('')
+            ax[1, i].set_ylabel('Time (s)')
 
-        # Remove individual legends
-        handles, labels = ax[0, i].get_legend_handles_labels()
-        ax[0, i].legend_.remove()
-        ax[1, i].legend_.remove()
-
-        # Add combined legend (only once)
+        # Collect legend entries from the first config (all subsequent are the same)
         if i == 0:
-            fig.legend(handles, labels, loc='center right',
-                       bbox_to_anchor=(0.95, 0.5), frameon=False)
+            seen = set()
+            for method in non_pgd + ['PGD']:
+                if method in available_methods and method not in seen:
+                    legend_handles.append(
+                        plt.Line2D([0], [0], color=COLORS[method], linewidth=1.0)
+                    )
+                    legend_labels.append(method)
+                    seen.add(method)
 
-    plt.tight_layout(rect=[0, 0, 0.78, 1])
-    fig_path = FIGURES_DIR / f"comparison_{objective}.png"
+    fig.legend(legend_handles, legend_labels, loc='center right',
+               bbox_to_anchor=(0.97, 0.5), frameon=False)
+    plt.tight_layout(rect=[0, 0, 0.80, 1])
+
+    fig_path = FIGURES_DIR / f"comparison_relative_{objective}.png"
     plt.savefig(fig_path, dpi=400)
     plt.close()
     print(f"Saved: {fig_path.name}")
 
 
-def make_all_plots():
+def make_all_plots(start_seed=SEED, end_seed=SEED):
     """Generate all comparison plots."""
     print("\n=== Generating plots ===")
 
-    # Ensure figures directory exists
     FIGURES_DIR.mkdir(exist_ok=True)
 
-    # Load matplotlib style
     style_file = SCRIPT_DIR.parent / 'jmlr.mplstyle'
     if style_file.exists():
         plt.style.use(str(style_file))
 
-    # Individual plots
+    # Individual plots: one per (p, n_envs, objective)
     for p, n_envs in PARAM_CONFIGS:
         for objective in OBJECTIVES:
             try:
-                make_individual_plot(p, n_envs, objective)
+                make_individual_plot(p, n_envs, objective, start_seed, end_seed)
             except FileNotFoundError as e:
-                print(f"Warning: Missing results for p={p}, n_envs={n_envs}, {objective}: {e}")
+                print(f"Warning: {e}")
 
-    # Combined plots
+    # Combined plots: one per objective
     for objective in OBJECTIVES:
         try:
-            make_combined_plot(objective)
+            make_combined_plot(objective, start_seed, end_seed)
         except FileNotFoundError as e:
-            print(f"Warning: Missing results for combined {objective} plot: {e}")
+            print(f"Warning: {e}")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--rerun', action='store_true',
                         help='Force rerun all methods')
+    parser.add_argument('--plots_only', action='store_true',
+                        help='Skip running methods, only generate plots')
+    parser.add_argument('--start_seed', type=int, default=SEED,
+                        help='First seed (inclusive)')
+    parser.add_argument('--end_seed', type=int, default=SEED,
+                        help='Last seed (inclusive)')
     args = parser.parse_args()
 
-    # Ensure directories exist
     RESULTS_DIR.mkdir(exist_ok=True)
     FIGURES_DIR.mkdir(exist_ok=True)
 
-    # Run methods (unless plots-only)
     if not args.plots_only:
-        run_all_methods(rerun=args.rerun)
+        run_all_methods(rerun=args.rerun,
+                        start_seed=args.start_seed,
+                        end_seed=args.end_seed)
 
-    # Generate plots
-    make_all_plots()
+    make_all_plots(start_seed=args.start_seed, end_seed=args.end_seed)
 
     print("\n=== Done ===")
 

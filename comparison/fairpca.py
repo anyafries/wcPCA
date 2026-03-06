@@ -113,7 +113,8 @@ def run_fairpca(p, n_envs, objective, seed=SEED):
 
     # Generate covariances
     np.random.seed(seed)
-    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs)
+    rng = np.random.default_rng(seed)
+    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs, rng)
 
     # Run SDP
     print("  Running SDP optimizer...")
@@ -137,6 +138,10 @@ def main():
                         help='Dimension p')
     parser.add_argument('--n_envs', type=int, default=None,
                         help='Number of environments')
+    parser.add_argument('--start_seed', type=int, default=SEED,
+                        help='First seed (inclusive)')
+    parser.add_argument('--end_seed', type=int, default=SEED,
+                        help='Last seed (inclusive)')
     args = parser.parse_args()
 
     # Ensure results directory exists
@@ -150,24 +155,25 @@ def main():
 
     objectives = [args.objective] if args.objective else ['MM_Var', 'MM_Loss']
 
-    for i, (p, n_envs) in enumerate(param_configs):
-        for objective in objectives:
-            suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}.csv"
-            sdp_file = RESULTS_DIR / f"SDP{suffix}"
-            mw_file = RESULTS_DIR / f"MW{suffix}"
+    for seed in range(args.start_seed, args.end_seed + 1):
+        for p, n_envs in param_configs:
+            for objective in objectives:
+                suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
+                sdp_file = RESULTS_DIR / f"SDP{suffix}"
+                mw_file = RESULTS_DIR / f"MW{suffix}"
 
-            # Check cache
-            if not args.rerun and sdp_file.exists() and mw_file.exists():
-                print(f"Cached results exist for p={p}, n_envs={n_envs}, {objective}, skipping...")
-                continue
+                # Check cache
+                if not args.rerun and sdp_file.exists() and mw_file.exists():
+                    print(f"Cached results exist for p={p}, n_envs={n_envs}, {objective}, seed={seed}, skipping...")
+                    continue
 
-            # Run simulation
-            df_sdp, df_mw = run_fairpca(p, n_envs, objective, seed=SEED + i)
+                # Run simulation
+                df_sdp, df_mw = run_fairpca(p, n_envs, objective, seed=seed)
 
-            # Save results
-            df_sdp.to_csv(sdp_file, index=False)
-            df_mw.to_csv(mw_file, index=False)
-            print(f"  Saved: {sdp_file.name}, {mw_file.name}")
+                # Save results
+                df_sdp.to_csv(sdp_file, index=False)
+                df_mw.to_csv(mw_file, index=False)
+                print(f"  Saved: {sdp_file.name}, {mw_file.name}")
 
 
 if __name__ == '__main__':

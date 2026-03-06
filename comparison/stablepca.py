@@ -27,13 +27,13 @@ N_COMPONENTS = 5
 RESULTS_DIR = Path(__file__).parent / 'results'
 
 
-def run_stablepca(covs_norm, p):
+def run_stablepca(covs_norm, p, seed=SEED):
     """
     Run StablePCA for all ranks.
 
     Returns DataFrame with columns: rank, minvar, time
     """
-    np.random.seed(SEED)
+    np.random.seed(seed)
 
     n = covs_norm[0].shape[0]
     k = len(covs_norm)
@@ -66,11 +66,12 @@ def run_simulation(p, n_envs, seed=SEED):
 
     # Generate covariances
     np.random.seed(seed)
-    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs)
+    rng = np.random.default_rng(seed)
+    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs, rng)
 
     # Run StablePCA
     print("  Running StablePCA optimizer...")
-    df = run_stablepca(covs_norm, p)
+    df = run_stablepca(covs_norm, p, seed=seed)
 
     return df
 
@@ -83,6 +84,10 @@ def main():
                         help='Dimension p')
     parser.add_argument('--n_envs', type=int, default=None,
                         help='Number of environments')
+    parser.add_argument('--start_seed', type=int, default=SEED,
+                        help='First seed (inclusive)')
+    parser.add_argument('--end_seed', type=int, default=SEED,
+                        help='Last seed (inclusive)')
     args = parser.parse_args()
 
     # Ensure results directory exists
@@ -97,21 +102,22 @@ def main():
     # StablePCA only supports MM_Var
     objective = 'MM_Var'
 
-    for i, (p, n_envs) in enumerate(param_configs):
-        suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}.csv"
-        results_file = RESULTS_DIR / f"stablepca{suffix}"
+    for seed in range(args.start_seed, args.end_seed + 1):
+        for p, n_envs in param_configs:
+            suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
+            results_file = RESULTS_DIR / f"stablepca{suffix}"
 
-        # Check cache
-        if not args.rerun and results_file.exists():
-            print(f"Cached results exist for p={p}, n_envs={n_envs}, skipping...")
-            continue
+            # Check cache
+            if not args.rerun and results_file.exists():
+                print(f"Cached results exist for p={p}, n_envs={n_envs}, seed={seed}, skipping...")
+                continue
 
-        # Run simulation
-        df = run_simulation(p, n_envs, seed=SEED + i)
+            # Run simulation
+            df = run_simulation(p, n_envs, seed=seed)
 
-        # Save results
-        df.to_csv(results_file, index=False)
-        print(f"  Saved: {results_file.name}")
+            # Save results
+            df.to_csv(results_file, index=False)
+            print(f"  Saved: {results_file.name}")
 
 
 if __name__ == '__main__':

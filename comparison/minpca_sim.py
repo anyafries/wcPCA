@@ -34,14 +34,14 @@ LR = 0.1
 N_ITERS = 100
 
 
-def run_minpca(covs_norm, objective, p):
+def run_minpca(covs_norm, objective, p, seed=SEED):
     """
     Run minPCA (PGD optimizer) for all ranks.
 
     Returns DataFrame with columns: rank, minvar, time
     """
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
     n = covs_norm[0].shape[0]
 
@@ -87,11 +87,12 @@ def run_simulation(p, n_envs, objective, seed=SEED):
 
     # Generate covariances
     np.random.seed(seed)
-    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs)
+    rng = np.random.default_rng(seed)
+    covs_norm = get_random_covs(p, N_COMPONENTS, n_envs, rng)
 
     # Run minPCA
     print("  Running PGD optimizer...")
-    df = run_minpca(covs_norm, objective, p)
+    df = run_minpca(covs_norm, objective, p, seed=seed)
 
     return df
 
@@ -107,6 +108,10 @@ def main():
                         help='Dimension p')
     parser.add_argument('--n_envs', type=int, default=None,
                         help='Number of environments')
+    parser.add_argument('--start_seed', type=int, default=SEED,
+                        help='First seed (inclusive)')
+    parser.add_argument('--end_seed', type=int, default=SEED,
+                        help='Last seed (inclusive)')
     args = parser.parse_args()
 
     # Ensure results directory exists
@@ -120,22 +125,23 @@ def main():
 
     objectives = [args.objective] if args.objective else ['MM_Var', 'MM_Loss']
 
-    for i, (p, n_envs) in enumerate(param_configs):
-        for objective in objectives:
-            suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}.csv"
-            results_file = RESULTS_DIR / f"minPCA{suffix}"
+    for seed in range(args.start_seed, args.end_seed + 1):
+        for p, n_envs in param_configs:
+            for objective in objectives:
+                suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
+                results_file = RESULTS_DIR / f"minPCA{suffix}"
 
-            # Check cache
-            if not args.rerun and results_file.exists():
-                print(f"Cached results exist for p={p}, n_envs={n_envs}, {objective}, skipping...")
-                continue
+                # Check cache
+                if not args.rerun and results_file.exists():
+                    print(f"Cached results exist for p={p}, n_envs={n_envs}, {objective}, seed={seed}, skipping...")
+                    continue
 
-            # Run simulation
-            df = run_simulation(p, n_envs, objective, seed=SEED + i)
+                # Run simulation
+                df = run_simulation(p, n_envs, objective, seed=seed)
 
-            # Save results
-            df.to_csv(results_file, index=False)
-            print(f"  Saved: {results_file.name}")
+                # Save results
+                df.to_csv(results_file, index=False)
+                print(f"  Saved: {results_file.name}")
 
 
 if __name__ == '__main__':
