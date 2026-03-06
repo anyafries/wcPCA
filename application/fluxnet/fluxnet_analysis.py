@@ -21,7 +21,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 
-from utils import compare_errs3, loo_time_split
+from utils import loo_time_split
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared_preprocessing import create_poolscale, create_envzeromean, build_env_dicts
@@ -288,10 +288,28 @@ def run_single_split(X_poolscale_df, environments, env_dfs_envmeanzero,
 # Plotting Functions
 # =============================================================================
 
+def compute_diffs(df, y, method1, method2, variance=False, return_seeds=False):
+    assert ((y == 'err' and not variance) or (y == 'var' and variance))
+    diffs = []
+    relative_diffs = []
+    for seed in df['seed'].unique():
+        df1 = df[(df['method'] == method1) & (df['seed'] == seed)]
+        df2 = df[(df['method'] == method2) & (df['seed'] == seed)]
+        diff = df2[y].values - df1[y].values
+        assert len(diff) == 1, f"Expected one row per method/seed, got {len(diff)}"
+        diffs.append(diff[0])
+        relative_diffs.append(diff[0] / df1[y].values[0])
+    
+    if return_seeds:
+        return diffs, relative_diffs, list(df['seed'].unique())
+    else:
+        return diffs, relative_diffs
+
+
 def compare_errs_across_methods(df, ax, y, 
                                 num_components=2, 
                                 relative=True,
-                                variance=False):
+                                variance=True):
     df_sub = df[df['n_components'] == num_components]
     diffs = []
     relative_diffs = []
@@ -301,38 +319,62 @@ def compare_errs_across_methods(df, ax, y,
     base_method = f'{BASE_METHOD}_train' if train else BASE_METHOD
     comparison_methods = [f'{m}_train' if train else m for m in COMPARISON_METHODS]
 
-    for seed in df_sub['seed'].unique():
-        df1 = df_sub[(df_sub['method'] == base_method) & (df_sub['seed'] == seed)]
-        for method2, method2_label in zip(comparison_methods, COMPARISON_METHODS_LABEL):
-            df2 = df_sub[(df_sub['method'] == method2) & (df_sub['seed'] == seed)]
-            diff = df2[y].values - df1[y].values
-            if variance:
-                diff = -diff # for variance, higher is better so flip the sign
-            assert len(diff) == 1, print(diff, method2, seed)
-            diffs.append(diff[0])
-            names.append(method2_label)
-            relative_diffs.append(diff[0] / df1[y].values[0])
+    for method2, method2_label in zip(comparison_methods, COMPARISON_METHODS_LABEL):
+        diff, relative_diff = compute_diffs(df_sub, y, base_method, method2, 
+                                            variance=variance)
+        diffs += diff
+        relative_diffs += relative_diff
+        names += [method2_label for _ in diff]
     
-    df = pd.DataFrame({
+    df_diffs = pd.DataFrame({
         'method': names,
         'diff': diffs,
         'relative_diff': relative_diffs,
     })
-    # print(df[df['method'] == COMPARISON_METHODS_LABEL[MAIN_METHOD]])
-    print(df.groupby('method')[['relative_diff', 'diff']].median().reset_index())
-    sns.boxplot(data=df, x='method', 
+    # print(df_diffs[df_diffs['method'] == COMPARISON_METHODS_LABEL[MAIN_METHOD]])
+    print(df_diffs.groupby('method')[['relative_diff', 'diff']].median().reset_index())
+    sns.boxplot(data=df_diffs, x='method', 
                 y='relative_diff' if relative else 'diff', ax=ax, width=0.7,
                 linewidth=1, order=COMPARISON_METHODS_LABEL,
                 boxprops=dict(facecolor="#A4D4E0"), fliersize=3)
     
 
+
+def compare_errs_across_pcs(df, ax, y, method1, method2, relative=True, 
+                            variance=True):
+    df_sub = df[df['method'].isin([method1, method2])]
+    
+    diffs = []
+    relative_diffs = []
+    n_components = []
+
+    for k in df_sub['n_components'].unique():
+        diff, relative_diff = compute_diffs(df_sub[df_sub['n_components'] == k], 
+                                            y, method1, method2, 
+                                            variance=variance)
+        diffs += diff
+        relative_diffs += relative_diff
+        n_components += [k for _ in diff]
+    
+    df_diffs = pd.DataFrame({
+        'n_components': n_components,
+        'diff': diffs,
+        'relative_diff': relative_diffs,
+    })
+
+    sns.boxplot(data=df_diffs, x='n_components', 
+                y='relative_diff' if relative else 'diff', 
+                ax=ax, width=0.7, linewidth=1,
+                boxprops=dict(facecolor="#A4D4E0"), fliersize=3)
+    
+
 def plot_boxplot_npcs(wc_out_df, num_components=2, y='err', average=False,
-                      save_path=None, source=False, relative=True):
+                      save_path=None, source=False, relative=True, variance=True):
     fig, ax = plt.subplots(figsize=(2.5, 2.5), sharey=False)
     compare_errs_across_methods(
         wc_out_df, ax, y,
         num_components=num_components,
-        variance=False, relative=relative
+        variance=variance, relative=relative
     )
     ax.axhline(0, color='black', linestyle='--', linewidth=0.8)
     metric = 'average' if average else 'worst-case'
@@ -354,7 +396,8 @@ def plot_boxplot_npcs(wc_out_df, num_components=2, y='err', average=False,
     plt.close()
 
 
-def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label,
+def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label, 
+                            relative=True, variance=True,
                             highlight_seed=None, ax=None, save_path=None):
     """
     Boxplot comparing method vs BASE_METHOD across splits.
@@ -371,48 +414,54 @@ def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label,
     if highlight_seed is not None:
         comp_dfs = []
         for i, df1 in enumerate([wc_in_df, wc_out_df]):
-            diffs = []
-            ranks = []
-            seeds = []
-            for seed in wc_in_df['seed'].unique():
-                m1, m2 = method, BASE_METHOD
-                if i == 0:
-                    m1 = f'{m1}_train'
-                    m2 = f'{m2}_train'
-                df1_m1_seed = df1[(df1['method'] == m1) & (df1['seed'] == seed)]
-                df1_m2_seed = df1[(df1['method'] == m2) & (df1['seed'] == seed)]
-                x = df1_m1_seed['n_components'].unique()
-                y1_seed = df1_m1_seed['var'].values - df1_m2_seed['var'].values
-                diffs.append(y1_seed)
-                ranks.append(x)
-                seeds += [seed for _ in range(len(x))]
-
-            df2 = pd.DataFrame({
-                'n_components': np.concatenate(ranks) - 1,  # Adjust for boxplot x-axis
-                'diff': np.concatenate(diffs),
+            diffs, rel_diffs, seeds = [], [], []
+            n_components = []
+            for k in df1['n_components'].unique():
+                diff, rel_diff, seed_list = compute_diffs(
+                    df1[df1['n_components'] == k], 'var', 
+                    f'{BASE_METHOD}_train' if i == 0 else BASE_METHOD, 
+                    f'{method}_train' if i == 0 else method, 
+                    variance=variance, return_seeds=True
+                )
+                diffs += diff
+                rel_diffs += rel_diff
+                seeds += seed_list
+                n_components += [k for _ in diff]   
+            comp_df = pd.DataFrame({
+                'n_components': n_components,  # Adjust for boxplot x-axis
+                'diff': diffs,
+                'relative_diff': rel_diffs,
                 'seed': seeds
             })
-            comp_dfs.append(df2)
+            comp_dfs.append(comp_df)
 
     # Create figure if ax not provided
     own_figure = ax is None
     if own_figure:
         fig, ax = plt.subplots(1, 2, figsize=(4, 1.8), sharey=True)
 
-    compare_errs3(wc_in_df, ax[0], 'var', f'{method}_train',
-                  f'{BASE_METHOD}_train')
+    compare_errs_across_pcs(wc_in_df, ax[0], 'var', 
+                            f'{BASE_METHOD}_train',
+                            f'{method}_train',
+                            variance=variance, relative=relative)
     ax[0].axhline(0, color='black', linestyle='--', linewidth=0.8)
-    ax[0].set_ylim(-0.25, 0.4)
+    ymin, ymax = (-0.85, 0.85) if relative else (-0.25, 0.4)
+    ax[0].set_ylim(ymin, ymax)
     if comp_dfs is not None:
         sns.scatterplot(comp_dfs[0][comp_dfs[0].seed == highlight_seed],
-                        x='n_components', y='diff', ax=ax[0], zorder=10,
+                        x='n_components', 
+                        y='relative_diff' if relative else 'diff', 
+                        ax=ax[0], zorder=10,
                         color='tomato', s=25)
 
-    compare_errs3(wc_out_df, ax[1], 'var', method, BASE_METHOD)
+    compare_errs_across_pcs(wc_out_df, ax[1], 'var', BASE_METHOD, method,
+                            variance=variance, relative=relative)
     ax[1].axhline(0, color='black', linestyle='--', linewidth=0.8)
     if comp_dfs is not None:
         sns.scatterplot(comp_dfs[1][comp_dfs[1].seed == highlight_seed],
-                        x='n_components', y='diff', ax=ax[1], zorder=10,
+                        x='n_components', 
+                        y='relative_diff' if relative else 'diff',
+                        ax=ax[1], zorder=10,
                         color='tomato', s=25)
 
     # Only set labels/titles if we own the figure
@@ -427,12 +476,14 @@ def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label,
                          ha='left', va='top', fontsize=9, fontweight='bold')
         plt.tight_layout()
         if save_path:
+            print(f"{save_path}_{method}.pdf")
             plt.savefig(f"{save_path}_{method}.pdf", bbox_inches='tight')
         plt.close()
 
 
 def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
-                                  highlight_seed=None, save_path=None):
+                                 relative=True, variance=True,
+                                 highlight_seed=None, save_path=None):
     """
     Plot a grid of boxplot comparisons for multiple methods.
 
@@ -453,7 +504,8 @@ def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
         ax_row = axes[row]
         plot_boxplot_comparison(
             wc_in_df, wc_out_df, method, method_label,
-            highlight_seed=highlight_seed, ax=ax_row
+            highlight_seed=highlight_seed, ax=ax_row, 
+            variance=variance, relative=relative
         )
 
         # Add bold method label rotated vertically to the left of ylabel
@@ -469,7 +521,11 @@ def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
             ax_row[0].set_xlabel('Number of PCs', fontsize=7)
             ax_row[1].set_xlabel('Number of PCs', fontsize=7)
 
-        ax_row[0].set_ylabel(r'$\Delta$ worst-case \\% expl. var.', fontsize=6)
+        ylab = 'Relative ' if relative else ''
+        ylab += r'$\Delta$ worst-case'
+        ylab += '\n' if relative else ''
+        ylab += '\\% expl. var.'
+        ax_row[0].set_ylabel(ylab, fontsize=6)
 
     # Set column titles only on top row
     axes[0, 0].set_title('Source regions', fontsize=8)

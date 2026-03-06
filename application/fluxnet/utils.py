@@ -11,46 +11,6 @@ from sklearn.decomposition import PCA
 from minPCA.minpca import minPCA, get_errs_pca, get_vars_pca, generate_params
 
 
-def compare_errs3(df1, ax, y, method1, method2, legend=True):
-    """
-    Create boxplot comparing difference between two methods across seeds.
-
-    Parameters
-    ----------
-    df1 : pd.DataFrame
-        DataFrame with columns: 'seed', 'method', 'n_components', and the y column
-    ax : matplotlib.axes.Axes
-        Axis to plot on
-    y : str
-        Column name for y-axis values
-    method1 : str
-        First method name (difference = method1 - method2)
-    method2 : str
-        Second method name
-    legend : bool
-        Whether to show legend (unused, kept for API compatibility)
-    """
-    diffs = []
-    ranks = []
-    for seed in df1['seed'].unique():
-        df1_m1_seed = df1[(df1['method'] == method1) & (df1['seed'] == seed)]
-        df1_m2_seed = df1[(df1['method'] == method2) & (df1['seed'] == seed)]
-        x = df1_m1_seed['n_components'].unique()
-        y1_seed = df1_m1_seed[y].values - df1_m2_seed[y].values
-        diffs.append(y1_seed)
-        ranks.append(x)
-
-    df = pd.DataFrame({
-        'n_components': np.concatenate(ranks),
-        'diff': np.concatenate(diffs),
-    })
-    sns.boxplot(data=df, x='n_components', y='diff', ax=ax,
-                width=0.7,
-                linewidth=1,
-                boxprops=dict(facecolor="#A4D4E0"),
-                fliersize=3)
-
-
 def loo_time_split(
         Xpool_df_in,
         environments,
