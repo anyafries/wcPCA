@@ -46,7 +46,7 @@ def run_sdp(covs_norm, objective, p):
         n=n,
         k=k,
         B=covs_norm,
-        list_d=range(1, n + 1),
+        list_d=range(1, n),
         Obj=objective,
         return_option="frac_sol",
         savedPath=None,
@@ -82,7 +82,7 @@ def run_mw(covs_norm, objective, p):
     norm_csts = [1 for _ in covs_norm]
 
     results = []
-    for d in range(1, n + 1):
+    for d in range(1, n):
         X_last, X_avg, runstats, total_time = fairDimReduction_MW(
             n=n,
             k=k,
