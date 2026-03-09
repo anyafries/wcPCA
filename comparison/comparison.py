@@ -161,16 +161,18 @@ def _add_relative_perf(df):
 
 def _plot_percentile_lines(ax, df, y_col, methods):
     """Plot median line + 25th/75th percentile band per method."""
+    q_low, q_high = 0.25, 0.75
     for method in methods:
         df_m = df[df['Method'] == method]
-        stats = df_m.groupby('rank')[y_col].quantile([0.25, 0.5, 0.75]).unstack()
+        stats = df_m.groupby('rank')[y_col].quantile([q_low, 0.5, q_high]).unstack()
         color = COLORS[method]
         ax.plot(stats.index, stats[0.5], color=color, label=method, linewidth=1.0)
-        ax.fill_between(stats.index, stats[0.25], stats[0.75],
+        ax.fill_between(stats.index, stats[q_low], stats[q_high],
                         color=color, alpha=0.2, linewidth=0)
 
 
-def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
+def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
+                         ymin=None, ymax=None):
     """Create individual relative performance plot for one (p, n_envs, objective).
 
     Saved as: figures/comparison_relative_{objective}_p{p}_ncomp{n}_ne{e}.png
@@ -182,6 +184,8 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
 
     if p == 50:
         df = df[df['rank'] % 2 == 1]
+    if (objective == 'MM_Loss') and (p == 10):
+            df = df[df['rank'] <= 9] 
 
     available_methods = df['Method'].unique()
     non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
@@ -193,12 +197,17 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
     _plot_percentile_lines(axes[0], df[df['Method'].isin(non_pgd)], 'rel', non_pgd)
     axes[0].axhline(0, color='black', linewidth=0.5, linestyle='--')
     axes[0].set_xlabel('Rank of solution')
-    axes[0].set_ylabel('Relative gap\nvs PGD')
+    ylab = 'explained variance' if objective == 'MM_Var' else 'regret'
+    axes[0].set_ylabel(r'$\Delta$ ' + ylab)
+    axes[0].set_ylim(ymin, ymax)
 
     # Runtime subplot (right)
     _plot_percentile_lines(axes[1], df, 'time', all_methods)
     axes[1].set_xlabel('Rank of solution')
     axes[1].set_ylabel('Time (s)')
+    ylim = axes[1].get_ylim()
+    if ylim[1] > 60:
+        axes[1].set_ylim(0, 60)
 
     # Shared legend (combine entries from both subplots without duplicates)
     all_labels_seen = set()
@@ -211,8 +220,17 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
                 legend_labels.append(label)
                 all_labels_seen.add(label)
 
+    higher = 'better' if objective == 'MM_Var' else 'worse'
+    lower = 'worse' if objective == 'MM_Var' else 'better'
+    axes[0].text(1.07, 0, f'→ {higher}',
+            transform=axes[0].get_yaxis_transform(),
+            rotation=90, va='bottom', ha='left', fontsize=8)
+    axes[0].text(1.07, 0, f'PGD {lower} ←',
+            transform=axes[0].get_yaxis_transform(),
+            rotation=90, va='top', ha='left', fontsize=8)
+
     fig.legend(legend_handles, legend_labels, loc='center right',
-               bbox_to_anchor=(1.12, 0.55), frameon=False)
+               bbox_to_anchor=(1.05, 0.55), frameon=False)
     fig.tight_layout(rect=[0, 0, 0.85, 1])
 
     suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}"
@@ -222,7 +240,8 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
     print(f"Saved: {fig_path.name}")
 
 
-def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
+def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
+                       ymin=None, ymax=None):
     """Create combined relative performance plot (3 configs × 2 metrics).
 
     Saved as: figures/comparison_relative_{objective}.png
@@ -231,7 +250,7 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
     """
     plt.style.use(str(SCRIPT_DIR.parent / 'jmlr.mplstyle'))
 
-    fig, ax = plt.subplots(2, 3, figsize=(6, 3.5))
+    fig, ax = plt.subplots(2, 3, figsize=(6, 3.3))
 
     legend_handles, legend_labels = [], []
 
@@ -241,6 +260,8 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
 
         if p == 50:
             df = df[df['rank'] % 2 == 1]
+        if (objective == 'MM_Loss') and (p == 10):
+            df = df[df['rank'] <= 9] 
 
         available_methods = df['Method'].unique()
         non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
@@ -252,13 +273,19 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
         ax[0, i].set_title(f"p={p}, E={n_envs}\n", fontsize=10)
         ax[0, i].set_xlabel('Rank of solution')
         if i == 0:
-            ax[0, i].set_ylabel('Relative gap\nvs PGD')
+            ylab = 'explained variance' if objective == 'MM_Var' else 'regret'
+            ax[0, i].set_ylabel(r'$\Delta$ ' + ylab)
+        ax[0, i].set_ylim(ymin, ymax)
 
         # Runtime (bottom row)
         _plot_percentile_lines(ax[1, i], df, 'time', all_methods)
         ax[1, i].set_xlabel('Rank of solution')
         if i == 0:
             ax[1, i].set_ylabel('Time (s)')
+
+        ylim = ax[1, i].get_ylim()
+        if ylim[1] > 20:
+            ax[1, i].set_ylim(-2, 20)
 
         # Collect legend entries from the first config (all subsequent are the same)
         if i == 0:
@@ -271,9 +298,19 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
                     legend_labels.append(method)
                     seen.add(method)
 
+    last = len(PARAM_CONFIGS) - 1
+    higher = 'better' if objective == 'MM_Var' else 'worse'
+    lower = 'worse' if objective == 'MM_Var' else 'better'
+    ax[0, last].text(1.07, 0, f'→ {higher}',
+            transform=ax[0, last].get_yaxis_transform(),
+            rotation=90, va='bottom', ha='left', fontsize=8)
+    ax[0, last].text(1.07, 0, f'PGD {lower} ←',
+            transform=ax[0, last].get_yaxis_transform(),
+            rotation=90, va='top', ha='left', fontsize=8)
+
     fig.legend(legend_handles, legend_labels, loc='center right',
-               bbox_to_anchor=(0.97, 0.5), frameon=False)
-    plt.tight_layout(rect=[0, 0, 0.80, 1])
+               bbox_to_anchor=(0.99, 0.5), frameon=False)
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     fig_path = FIGURES_DIR / f"comparison_relative_{objective}.png"
     plt.savefig(fig_path, dpi=400)
@@ -295,14 +332,17 @@ def make_all_plots(start_seed=SEED, end_seed=SEED):
     for p, n_envs in PARAM_CONFIGS:
         for objective in OBJECTIVES:
             try:
-                make_individual_plot(p, n_envs, objective, start_seed, end_seed)
+                ymin, ymax = (None, None) if objective == 'MM_Var' else (-0.5, None)
+                make_individual_plot(p, n_envs, objective, start_seed, end_seed,
+                                     ymin, ymax)
             except FileNotFoundError as e:
                 print(f"Warning: {e}")
 
     # Combined plots: one per objective
     for objective in OBJECTIVES:
         try:
-            make_combined_plot(objective, start_seed, end_seed)
+            ymin, ymax = (-0.025, 0.1) if objective == 'MM_Var' else (None, None)
+            make_combined_plot(objective, start_seed, end_seed, ymin, ymax)
         except FileNotFoundError as e:
             print(f"Warning: {e}")
 
