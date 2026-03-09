@@ -48,7 +48,7 @@ def run_minpca(covs_norm, objective, p, seed=SEED):
     minvars = []
     times = []
 
-    for rank in range(1, n + 1):
+    for rank in range(1, n):
         # Choose function based on objective
         if objective == "MM_Loss":
             function = "maxregret"
@@ -75,7 +75,7 @@ def run_minpca(covs_norm, objective, p, seed=SEED):
         times.append(t1 - t0)
 
     return pd.DataFrame({
-        'rank': list(range(1, n + 1)),
+        'rank': list(range(1, n)),
         'minvar': minvars,
         'time': times
     })

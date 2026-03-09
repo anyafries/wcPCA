@@ -40,6 +40,7 @@ COLORS = {
     'SDP': 'tab:orange',
     'MW': 'tab:red',
     'StablePCA': 'tab:green',
+    'StablePCA_new': '#2ca02c',
 }
 
 
@@ -69,6 +70,13 @@ def run_all_methods(rerun=False, start_seed=SEED, end_seed=SEED):
         check=True
     )
 
+    # Run StablePCA (new version)
+    print("\n=== Running StablePCA (new version) ===")
+    subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / 'stablepca_new.py')] + rerun_flag + seed_args,
+        check=True
+    )
+
 
 def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
     """Load multi-seed results from all methods for a given configuration.
@@ -91,6 +99,7 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
         }
         if objective == 'MM_Var':
             files['StablePCA'] = RESULTS_DIR / f"stablepca{suffix}"
+            files['StablePCA_new'] = RESULTS_DIR / f"stablepca_stable_{suffix}"
 
         missing = [name for name, f in files.items() if not f.exists()]
         if missing:
@@ -124,6 +133,12 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
             df_stablepca['obj'] = df_stablepca['minvar']
             df_stablepca['seed'] = seed
             seed_dfs.append(df_stablepca)
+
+            df_stablepca_new = pd.read_csv(files['StablePCA_new'])
+            df_stablepca_new['Method'] = 'StablePCA_new'
+            df_stablepca_new['obj'] = df_stablepca_new['minvar']
+            df_stablepca_new['seed'] = seed
+            seed_dfs.append(df_stablepca_new)
 
         all_dfs.extend(seed_dfs)
 
@@ -193,7 +208,8 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
     _plot_percentile_lines(axes[0], df[df['Method'].isin(non_pgd)], 'rel', non_pgd)
     axes[0].axhline(0, color='black', linewidth=0.5, linestyle='--')
     axes[0].set_xlabel('Rank of solution')
-    axes[0].set_ylabel('Relative gap\nvs PGD')
+    ylab = 'variance' if objective == 'MM_Var' else 'regret'
+    axes[0].set_ylabel(r'$\Delta$'+f' {ylab} vs PGD')
 
     # Runtime subplot (right)
     _plot_percentile_lines(axes[1], df, 'time', all_methods)
@@ -252,7 +268,8 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED):
         ax[0, i].set_title(f"p={p}, E={n_envs}\n", fontsize=10)
         ax[0, i].set_xlabel('Rank of solution')
         if i == 0:
-            ax[0, i].set_ylabel('Relative gap\nvs PGD')
+            ylab = 'variance' if objective == 'MM_Var' else 'regret'
+            ax[0, i].set_ylabel(r'$\Delta$'+f' {ylab} vs PGD')
 
         # Runtime (bottom row)
         _plot_percentile_lines(ax[1, i], df, 'time', all_methods)
