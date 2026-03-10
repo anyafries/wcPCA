@@ -39,11 +39,8 @@ COLORS = {
     'PGD': 'tab:blue',
     'SDP': 'tab:orange',
     'MW': 'tab:red',
-    'StablePCA(old)': 'tab:purple',
     'StablePCA': 'tab:green',
 }
-METHODS_TO_PLOT = ['PGD', 'SDP', 'MW', 'StablePCA']
-
 
 def set_integer_ticks(axes_list):
     from matplotlib.ticker import MaxNLocator
@@ -70,17 +67,10 @@ def run_all_methods(rerun=False, start_seed=SEED, end_seed=SEED):
         check=True
     )
 
-    # Run StablePCA (MM_Var only)
+    # Run StablePCA
     print("\n=== Running StablePCA ===")
     subprocess.run(
         [sys.executable, str(SCRIPT_DIR / 'stablepca.py')] + rerun_flag + seed_args,
-        check=True
-    )
-
-    # Run StablePCA (new version)
-    print("\n=== Running StablePCA (new version) ===")
-    subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'stablepca_new.py')] + rerun_flag + seed_args,
         check=True
     )
 
@@ -105,8 +95,6 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
             'MW': RESULTS_DIR / f"MW{suffix}",
             'StablePCA_new': RESULTS_DIR / f"stablepca_new{suffix}",
         }
-        if objective == 'MM_Var':
-            files['StablePCA'] = RESULTS_DIR / f"stablepca{suffix}"
 
         missing = [name for name, f in files.items() if not f.exists()]
         if missing:
@@ -139,13 +127,6 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
         df_stablepca_new['seed'] = seed
 
         seed_dfs = [df_minpca, df_sdp, df_mw, df_stablepca_new]
-
-        if objective == 'MM_Var':
-            df_stablepca = pd.read_csv(files['StablePCA'])
-            df_stablepca['Method'] = 'StablePCA(old)'
-            df_stablepca['obj'] = df_stablepca['minvar']
-            df_stablepca['seed'] = seed
-            seed_dfs.append(df_stablepca)
 
         all_dfs.extend(seed_dfs)
 
@@ -212,7 +193,6 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
     available_methods = df['Method'].unique()
     print(f"Available methods for p={p}, n_envs={n_envs}, {objective}: {available_methods}")
     non_pgd = [m for m in available_methods if m != 'PGD']
-    non_pgd = [m for m in METHODS_TO_PLOT if m in non_pgd]
     all_methods = ['PGD'] + non_pgd
 
     fig, axes = plt.subplots(1, 2, figsize=(4.5, 1.8))
@@ -295,7 +275,6 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
 
         available_methods = df['Method'].unique()
         non_pgd = [m for m in available_methods if m != 'PGD']
-        non_pgd = [m for m in METHODS_TO_PLOT if m in non_pgd]
         all_methods = ['PGD'] + non_pgd
 
         # Relative performance (top row)

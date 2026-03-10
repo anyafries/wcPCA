@@ -52,7 +52,7 @@ def run_stablepca(covs_norm, p, method, seed=SEED):
         model = PCA_MP(n_components=rank, method=method)
 
         t0 = time.time()
-        model.fit(X_list, Sigma_list=covs_norm)
+        model.fit(X_list, Sigma_list=covs_norm, verbose=False)
         t1 = time.time()
 
         v_stablepca = model.components_.T
