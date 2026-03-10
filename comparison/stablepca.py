@@ -3,15 +3,11 @@ StablePCA Comparison Script
 
 Runs StablePCA algorithm for worst-case PCA comparison.
 
-Note: StablePCA only supports the MM_Var objective (minimum variance maximization).
-      It does NOT support MM_Loss (regret minimization).
-
 Output:
-    results/stablepca_MM_Var_p{p}_ncomp{n_components}_ne{n_envs}.csv
+    results/stablepca_{objective}_p{p}_ncomp{n_components}_ne{n_envs}.csv
 """
 
 import argparse
-import sys
 import time
 from pathlib import Path
 
@@ -19,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from StablePCA.PCAalg import PCA_MP
-from utils import get_random_covs, f_minpca_np
+from utils import get_random_covs, f_minpca_np, f_regret_np
 
 # === Constants ===
 SEED = 2
@@ -56,13 +52,18 @@ def run_stablepca(covs_norm, p, method, seed=SEED):
         model = PCA_MP(n_components=rank, method=method)
 
         t0 = time.time()
-        model.fit(X_list, Sigma_list=covs_norm, 
-                    eta_init=10,
-                    max_iter=10)
+        model.fit(X_list, Sigma_list=covs_norm)
         t1 = time.time()
 
-        v_stablepca = model.components_
-        minvars.append(f_minpca_np(v_stablepca, covs_norm, [1.0] * k))
+        v_stablepca = model.components_.T
+        if method == 'stable':
+            minvars.append(f_minpca_np(v_stablepca, covs_norm, [1.0] * k))
+        elif method == 'fair':
+            obj = f_regret_np(v_stablepca, covs_norm, 
+                              [1.0] * k)
+            minvars.append(obj)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
         times.append(t1 - t0)
 
     return pd.DataFrame({
@@ -100,8 +101,8 @@ def main():
                         help='First seed (inclusive)')
     parser.add_argument('--end_seed', type=int, default=SEED,
                         help='Last seed (inclusive)')
-    parser.add_argument('--method', type=str, default='stable',
-                        help='PCA method to use (default: stable)')
+    parser.add_argument('--objective', type=str, default='MM_Var',
+                        help='Objective to optimize (default: MM_Var)')
     args = parser.parse_args()
 
     # Ensure results directory exists
@@ -113,13 +114,13 @@ def main():
     else:
         param_configs = [(10, 5), (10, 50), (50, 5)]
 
-    # StablePCA only supports MM_Var
-    objective = 'MM_Var'
+    objective = args.objective
+    method = 'stable' if objective == 'MM_Var' else 'fair'
 
     for seed in range(args.start_seed, args.end_seed + 1):
         for p, n_envs in param_configs:
             suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
-            results_file = RESULTS_DIR / f"stablepca_{args.method}_{suffix}"
+            results_file = RESULTS_DIR / f"stablepca_new{suffix}"
 
             # Check cache
             if not args.rerun and results_file.exists():
@@ -127,7 +128,7 @@ def main():
                 continue
 
             # Run simulation
-            df = run_simulation(p, n_envs, seed=seed, method=args.method)
+            df = run_simulation(p, n_envs, seed=seed, method=method)
 
             # Save results
             df.to_csv(results_file, index=False)
