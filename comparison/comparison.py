@@ -39,9 +39,16 @@ COLORS = {
     'PGD': 'tab:blue',
     'SDP': 'tab:orange',
     'MW': 'tab:red',
+    'StablePCA(old)': 'tab:purple',
     'StablePCA': 'tab:green',
-    'StablePCA_new': '#2ca02c',
 }
+METHODS_TO_PLOT = ['PGD', 'SDP', 'MW', 'StablePCA']
+
+
+def set_integer_ticks(axes_list):
+    from matplotlib.ticker import MaxNLocator
+    for ax in axes_list.flatten(): # .flatten() handles 2D arrays like yours
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=5))
 
 
 def run_all_methods(rerun=False, start_seed=SEED, end_seed=SEED):
@@ -96,10 +103,10 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
             'PGD': RESULTS_DIR / f"minPCA{suffix}",
             'SDP': RESULTS_DIR / f"SDP{suffix}",
             'MW': RESULTS_DIR / f"MW{suffix}",
+            'StablePCA_new': RESULTS_DIR / f"stablepca_new{suffix}",
         }
         if objective == 'MM_Var':
             files['StablePCA'] = RESULTS_DIR / f"stablepca{suffix}"
-            files['StablePCA_new'] = RESULTS_DIR / f"stablepca_stable_{suffix}"
 
         missing = [name for name, f in files.items() if not f.exists()]
         if missing:
@@ -125,20 +132,20 @@ def load_results(p, n_envs, objective, start_seed=SEED, end_seed=SEED):
         df_mw['rank'] = df_mw['d']
         df_mw['seed'] = seed
 
-        seed_dfs = [df_minpca, df_sdp, df_mw]
+        # Load StablePCA (new) results
+        df_stablepca_new = pd.read_csv(files['StablePCA_new'])
+        df_stablepca_new['Method'] = 'StablePCA'
+        df_stablepca_new['obj'] = df_stablepca_new['minvar']
+        df_stablepca_new['seed'] = seed
+
+        seed_dfs = [df_minpca, df_sdp, df_mw, df_stablepca_new]
 
         if objective == 'MM_Var':
             df_stablepca = pd.read_csv(files['StablePCA'])
-            df_stablepca['Method'] = 'StablePCA'
+            df_stablepca['Method'] = 'StablePCA(old)'
             df_stablepca['obj'] = df_stablepca['minvar']
             df_stablepca['seed'] = seed
             seed_dfs.append(df_stablepca)
-
-            df_stablepca_new = pd.read_csv(files['StablePCA_new'])
-            df_stablepca_new['Method'] = 'StablePCA_new'
-            df_stablepca_new['obj'] = df_stablepca_new['minvar']
-            df_stablepca_new['seed'] = seed
-            seed_dfs.append(df_stablepca_new)
 
         all_dfs.extend(seed_dfs)
 
@@ -170,7 +177,7 @@ def _add_relative_perf(df):
     df_pgd = (df[df['Method'] == 'PGD'][['rank', 'seed', 'obj']]
               .rename(columns={'obj': 'pgd_obj'}))
     df = df.merge(df_pgd, on=['rank', 'seed'])
-    df['rel'] = (df['pgd_obj'] - df['obj']) / df['pgd_obj'].abs()
+    df['rel'] = (df['obj'] - df['pgd_obj']) / df['pgd_obj'].abs()
     return df
 
 
@@ -200,11 +207,13 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
     if p == 50:
         df = df[df['rank'] % 2 == 1]
     if (objective == 'MM_Loss') and (p == 10):
-            df = df[df['rank'] <= 9] 
+        df = df[df['rank'] <= 9] 
 
     available_methods = df['Method'].unique()
-    non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
-    all_methods = [m for m in ['PGD', 'SDP', 'MW', 'StablePCA'] if m in available_methods]
+    print(f"Available methods for p={p}, n_envs={n_envs}, {objective}: {available_methods}")
+    non_pgd = [m for m in available_methods if m != 'PGD']
+    non_pgd = [m for m in METHODS_TO_PLOT if m in non_pgd]
+    all_methods = ['PGD'] + non_pgd
 
     fig, axes = plt.subplots(1, 2, figsize=(4.5, 1.8))
 
@@ -213,7 +222,9 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
     axes[0].axhline(0, color='black', linewidth=0.5, linestyle='--')
     axes[0].set_xlabel('Rank of solution')
     ylab = 'explained variance' if objective == 'MM_Var' else 'regret'
-    axes[0].set_ylabel(r'$\Delta$ ' + ylab)
+    ylab = r'$\Delta$ ' + ylab
+    ylab = 'Relative\n' + ylab if objective == 'MM_Var' else 'Relative ' + ylab
+    axes[0].set_ylabel(ylab)
     axes[0].set_ylim(ymin, ymax)
 
     # Runtime subplot (right)
@@ -235,17 +246,18 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
                 legend_labels.append(label)
                 all_labels_seen.add(label)
 
-    higher = 'better' if objective == 'MM_Var' else 'worse'
-    lower = 'worse' if objective == 'MM_Var' else 'better'
-    axes[0].text(1.07, 0, f'→ {higher}',
+    higher = 'worse' if objective == 'MM_Var' else 'better'
+    lower = 'better' if objective == 'MM_Var' else 'worse'
+    axes[0].text(1.07, 0, f'→ PGD is {higher}',
             transform=axes[0].get_yaxis_transform(),
             rotation=90, va='bottom', ha='left', fontsize=8)
-    axes[0].text(1.07, 0, f'PGD {lower} ←',
+    axes[0].text(1.07, 0, f'{lower} ←',
             transform=axes[0].get_yaxis_transform(),
             rotation=90, va='top', ha='left', fontsize=8)
 
     fig.legend(legend_handles, legend_labels, loc='center right',
                bbox_to_anchor=(1.05, 0.55), frameon=False)
+    set_integer_ticks(axes)
     fig.tight_layout(rect=[0, 0, 0.85, 1])
 
     suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}"
@@ -256,7 +268,7 @@ def make_individual_plot(p, n_envs, objective, start_seed=SEED, end_seed=SEED,
 
 
 def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
-                       ymin=None, ymax=None):
+                       ymin=None, ymax=None, time_max=None):
     """Create combined relative performance plot (3 configs × 2 metrics).
 
     Saved as: figures/comparison_relative_{objective}.png
@@ -275,12 +287,16 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
 
         if p == 50:
             df = df[df['rank'] % 2 == 1]
-        if (objective == 'MM_Loss') and (p == 10):
+        if (objective == 'MM_Var') and (p == 10):
             df = df[df['rank'] <= 9] 
+        if time_max and (df['time'].max() > time_max):
+            df['time'] = df['time'].clip(upper=time_max)
+
 
         available_methods = df['Method'].unique()
-        non_pgd = [m for m in ['SDP', 'MW', 'StablePCA'] if m in available_methods]
-        all_methods = [m for m in ['PGD', 'SDP', 'MW', 'StablePCA'] if m in available_methods]
+        non_pgd = [m for m in available_methods if m != 'PGD']
+        non_pgd = [m for m in METHODS_TO_PLOT if m in non_pgd]
+        all_methods = ['PGD'] + non_pgd
 
         # Relative performance (top row)
         _plot_percentile_lines(ax[0, i], df[df['Method'].isin(non_pgd)], 'rel', non_pgd)
@@ -289,7 +305,9 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
         ax[0, i].set_xlabel('Rank of solution')
         if i == 0:
             ylab = 'explained variance' if objective == 'MM_Var' else 'regret'
-            ax[0, i].set_ylabel(r'$\Delta$ ' + ylab)
+            ylab = r'$\Delta$ ' + ylab
+            ylab = 'Relative\n' + ylab if objective == 'MM_Var' else 'Relative ' + ylab
+            ax[0, i].set_ylabel(ylab)
         ax[0, i].set_ylim(ymin, ymax)
 
         # Runtime (bottom row)
@@ -297,10 +315,6 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
         ax[1, i].set_xlabel('Rank of solution')
         if i == 0:
             ax[1, i].set_ylabel('Time (s)')
-
-        ylim = ax[1, i].get_ylim()
-        if ylim[1] > 20:
-            ax[1, i].set_ylim(-2, 20)
 
         # Collect legend entries from the first config (all subsequent are the same)
         if i == 0:
@@ -314,18 +328,19 @@ def make_combined_plot(objective, start_seed=SEED, end_seed=SEED,
                     seen.add(method)
 
     last = len(PARAM_CONFIGS) - 1
-    higher = 'better' if objective == 'MM_Var' else 'worse'
-    lower = 'worse' if objective == 'MM_Var' else 'better'
+    higher = 'worse' if objective == 'MM_Var' else 'better'
+    lower = 'better' if objective == 'MM_Var' else 'worse'
     ax[0, last].text(1.07, 0, f'→ {higher}',
             transform=ax[0, last].get_yaxis_transform(),
             rotation=90, va='bottom', ha='left', fontsize=8)
-    ax[0, last].text(1.07, 0, f'PGD {lower} ←',
+    ax[0, last].text(1.07, 0, f'PGD is {lower} ←',
             transform=ax[0, last].get_yaxis_transform(),
             rotation=90, va='top', ha='left', fontsize=8)
 
     fig.legend(legend_handles, legend_labels, loc='center right',
-               bbox_to_anchor=(0.99, 0.5), frameon=False)
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+               bbox_to_anchor=(1, 0.5), frameon=False)
+    set_integer_ticks(ax)
+    plt.tight_layout(rect=[0, 0, 0.84, 1])
 
     fig_path = FIGURES_DIR / f"comparison_relative_{objective}.png"
     plt.savefig(fig_path, dpi=400)
@@ -346,8 +361,9 @@ def make_all_plots(start_seed=SEED, end_seed=SEED):
     # Individual plots: one per (p, n_envs, objective)
     for p, n_envs in PARAM_CONFIGS:
         for objective in OBJECTIVES:
+            print(f"\nGenerating plot for p={p}, n_envs={n_envs}, objective={objective}...")
             try:
-                ymin, ymax = (None, None) if objective == 'MM_Var' else (-0.5, None)
+                ymin, ymax = (None, None) if objective == 'MM_Var' else (-0.1, 0.4)
                 make_individual_plot(p, n_envs, objective, start_seed, end_seed,
                                      ymin, ymax)
             except FileNotFoundError as e:
@@ -356,8 +372,9 @@ def make_all_plots(start_seed=SEED, end_seed=SEED):
     # Combined plots: one per objective
     for objective in OBJECTIVES:
         try:
-            ymin, ymax = (-0.025, 0.1) if objective == 'MM_Var' else (None, None)
-            make_combined_plot(objective, start_seed, end_seed, ymin, ymax)
+            ymin, ymax = (-0.1, 0.025) if objective == 'MM_Var' else (None, None)
+            make_combined_plot(objective, start_seed, end_seed, ymin, ymax,
+                               time_max=60)
         except FileNotFoundError as e:
             print(f"Warning: {e}")
 
