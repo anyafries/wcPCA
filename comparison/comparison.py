@@ -30,7 +30,6 @@ SCRIPT_DIR = Path(__file__).parent
 RESULTS_DIR = SCRIPT_DIR / 'results'
 FIGURES_DIR = SCRIPT_DIR / 'figures'
 N_COMPONENTS = 5
-SEED = 2
 
 PARAM_CONFIGS = [(10, 5), (10, 50), (50, 5)]
 OBJECTIVES = ['MM_Var', 'MM_Loss']
@@ -364,9 +363,9 @@ def main():
                         help='Force rerun all methods')
     parser.add_argument('--plots_only', action='store_true',
                         help='Skip running methods, only generate plots')
-    parser.add_argument('--start_seed', type=int, default=SEED,
+    parser.add_argument('--start_seed', type=int, default=0,
                         help='First seed (inclusive)')
-    parser.add_argument('--end_seed', type=int, default=SEED,
+    parser.add_argument('--end_seed', type=int, default=25,
                         help='Last seed (inclusive)')
     args = parser.parse_args()
 
