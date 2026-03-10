@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stablepca_algo import StablePCA
+from StablePCA.PCAalg import PCA_MP
 from utils import get_random_covs, f_minpca_np
 
 # === Constants ===
@@ -27,7 +27,7 @@ N_COMPONENTS = 5
 RESULTS_DIR = Path(__file__).parent / 'results'
 
 
-def run_stablepca(covs_norm, p, seed=SEED):
+def run_stablepca(covs_norm, p, method, seed=SEED):
     """
     Run StablePCA for all ranks.
 
@@ -41,12 +41,24 @@ def run_stablepca(covs_norm, p, seed=SEED):
     minvars = []
     times = []
 
+    # sqrt of sigma for X in PCA_MP
+    jitter = 1e-8
+    p_dim = covs_norm[0].shape[0]
+
+    X_list = []
+    for cov in covs_norm:
+        # Add jitter to the diagonal
+        cov_pd = cov + np.eye(p_dim) * jitter
+        X_list.append(np.linalg.cholesky(cov_pd))
+
     for rank in range(1, n):
         print(f"    Rank: {rank}/{n}")
-        model = StablePCA(n_components=rank)
+        model = PCA_MP(n_components=rank, method=method)
 
         t0 = time.time()
-        model.fit(covs_norm, verbose=False)
+        model.fit(X_list, Sigma_list=covs_norm, 
+                    eta_init=10,
+                    max_iter=10)
         t1 = time.time()
 
         v_stablepca = model.components_
@@ -60,7 +72,7 @@ def run_stablepca(covs_norm, p, seed=SEED):
     })
 
 
-def run_simulation(p, n_envs, seed=SEED):
+def run_simulation(p, n_envs, method, seed=SEED):
     """Run StablePCA for given parameters."""
     print(f"Running StablePCA: p={p}, n_envs={n_envs}, objective=MM_Var")
 
@@ -71,7 +83,7 @@ def run_simulation(p, n_envs, seed=SEED):
 
     # Run StablePCA
     print("  Running StablePCA optimizer...")
-    df = run_stablepca(covs_norm, p, seed=seed)
+    df = run_stablepca(covs_norm, p, method=method, seed=seed)
 
     return df
 
@@ -88,6 +100,8 @@ def main():
                         help='First seed (inclusive)')
     parser.add_argument('--end_seed', type=int, default=SEED,
                         help='Last seed (inclusive)')
+    parser.add_argument('--method', type=str, default='stable',
+                        help='PCA method to use (default: stable)')
     args = parser.parse_args()
 
     # Ensure results directory exists
@@ -105,7 +119,7 @@ def main():
     for seed in range(args.start_seed, args.end_seed + 1):
         for p, n_envs in param_configs:
             suffix = f"_{objective}_p{p}_ncomp{N_COMPONENTS}_ne{n_envs}_seed{seed}.csv"
-            results_file = RESULTS_DIR / f"stablepca{suffix}"
+            results_file = RESULTS_DIR / f"stablepca_{args.method}_{suffix}"
 
             # Check cache
             if not args.rerun and results_file.exists():
@@ -113,7 +127,7 @@ def main():
                 continue
 
             # Run simulation
-            df = run_simulation(p, n_envs, seed=seed)
+            df = run_simulation(p, n_envs, seed=seed, method=args.method)
 
             # Save results
             df.to_csv(results_file, index=False)
