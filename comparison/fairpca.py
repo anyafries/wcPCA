@@ -24,8 +24,8 @@ import pandas as pd
 
 from utils import get_random_covs, get_V_from_X, f_minpca_np, f_regret_np
 
-from multi_criteria_dimensionality_reduction.SDP import fairDimReductionFractional
-from multi_criteria_dimensionality_reduction.MW import fairDimReduction_MW
+from FairPCA.SDP import fairDimReductionFractional
+from FairPCA.MW import fairDimReduction_MW
 
 # === Constants ===
 SEED = 2
