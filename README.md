@@ -39,7 +39,7 @@ python sim4_het_noise.py
 python sim5_maxmc.py
 ```
 
-### Comparison (Appendix B.2.1.)
+### Comparison with other optimization schemes (Appendix B.2.1.)
 
 See [`comparison/`](https://github.com/anyafries/wcPCA/tree/main/comparison) for details. Compares our projected gradient descent against [FairPCA](https://github.com/SDPforAll/multiCriteriaDimReduction) (Tantipongpipat et al., NeurIPS 2019) and [StablePCA](https://github.com/zywang0701/StablePCA) (Wang et al., 2026).
 
