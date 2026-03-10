@@ -41,36 +41,7 @@ python sim5_maxmc.py
 
 ### Comparison (Appendix B.2.1.)
 
-```diff
-! TODO: document adding the Fair PCA repo
-```
-
-Benchmarks maxRCS against published baselines on the objectives MM\_Var and MM\_Loss, varying the dimension and number of environments.
-
-| Script | Description |
-|---|---|
-| `comparison.py` | Orchestrates all methods and produces combined comparison figures |
-| `minpca_sim.py` | Runs minPCA (projected gradient descent) |
-| `fairpca.py` | Runs FairPCA via SDP and multiplicative weights (Tantipongpipat et al., NeurIPS 2019) |
-| `stablepca.py` | Runs StablePCA |
-
-```diff
-! TODO: StablePCA ref + add links.
-```
-
-Usage: 
-```bash
-cd comparison
-python comparison.py                # runs all methods and produces combined figures
-```
-
-Individual methods can also be run separately:
-
-```bash
-python minpca_sim.py  [--rerun] [--objective {MM_Var,MM_Loss}] [--p {10,50}] [--n_envs {5,50}]
-python fairpca.py     [--rerun]
-python stablepca.py   [--rerun]
-```
+See [`comparison/README.md`](comparison/README.md) for details. Compares our projected gradient descent against [FairPCA](https://github.com/SDPforAll/multiCriteriaDimReduction) (Tantipongpipat et al., NeurIPS 2019) and [StablePCA](https://github.com/zywang0701/StablePCA) (Wang et al., 2026).
 
 ### Applications
 

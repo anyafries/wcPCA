@@ -8,7 +8,7 @@ We compare against
 1. *Multi-Criteria Dimensionality Reduction with Applications to Fairness* ([NeurIPS paper](https://papers.nips.cc/paper/) and [arXiv version](https://arxiv.org/abs/1902.11281v2)), and use adapted code (with permission) from [their GitHub](https://github.com/SDPforAll/multiCriteriaDimReduction), stored in `FairPCA/`. 
 2. *StablePCA: Distributionally Robust Learning of Shared Representations from Multi-Source Data* ([arXiv version](https://arxiv.org/abs/2505.00940)), and use the code from [their GitHub](https://github.com/zywang0701/StablePCA) (MIT license). The relevant files are in `StablePCA/`.
 
-## File structure
+## Files and usage
 
 | Script | Description |
 |---|---|
