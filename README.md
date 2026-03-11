@@ -69,18 +69,18 @@ See [`comparison/`](https://github.com/anyafries/wcPCA/tree/main/comparison) for
 
 ### Applications
 
-```diff
-! TODO: document data access/decide what to do here
-```
-
-Section 6.1. correspond to the directory `fluxnet/`. Running the following produces Figure 8, Figure C.i, and Figure C.ii.
+Section 6.1. correspond to the directory `fluxnet/`. 
+The instructions for accessing data are coming shortly. Once they are there,
+running the following produces Figure 8, Figure C.i, and Figure C.ii.
 
 ```bash
 cd application/fluxnet
 python fluxnet_analysis.py          # or --rerun
 ```
 
-Section 6.2. correspond to the directory `ecosystem/`. Running the following produces Figure 9 and Figure C.iii.
+Section 6.2. correspond to the directory `ecosystem/`. 
+The instructions for accessing data are coming shortly. Once they are there,
+running the following produces Figure 9 and Figure C.iii.
 
 ```bash
 cd ../ecosystem
