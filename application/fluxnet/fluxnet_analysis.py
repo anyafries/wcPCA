@@ -384,10 +384,10 @@ def plot_boxplot_npcs(wc_out_df, num_components=2, y='err', average=False,
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Method')
     ax.tick_params(axis='x', rotation=90)
-    ax.text(1.07, 0, '→ worse',
+    ax.text(1.07, 0, '→ better than poolPCA',
             transform=ax.get_yaxis_transform(),
             rotation=90, va='bottom', ha='left', fontsize=8)
-    ax.text(1.07, 0, 'poolPCA better ←',
+    ax.text(1.07, 0, 'worse ←',
             transform=ax.get_yaxis_transform(),
             rotation=90, va='top', ha='left', fontsize=8)
     plt.tight_layout()
