@@ -1,6 +1,30 @@
 # Worst-case low-rank approximation (wcPCA)
 
-This repository contains all code to reproduce the simulations, method comparisons, and real-data applications of the paper *Worst-case low rank approximation*.
+This repository contains the code for the research paper *Worst-case low rank approximation*.
+
+## Setup
+
+1. Create a virtual environment
+
+```bash
+python -m venv venv_wcPCA
+source venv_wcPCA/bin/activate
+```
+
+2. Install the minPCA package
+
+```bash
+# Navigate to where you want to clone minPCA
+git clone https://github.com/anyafries/minPCA.git
+cd minPCA
+pip install . --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+3. Install remaining dependencies
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Repository Structure
 
@@ -61,35 +85,6 @@ Section 6.2. correspond to the directory `ecosystem/`. Running the following pro
 ```bash
 cd ../ecosystem
 python ecosystem_analysis.py        # or --rerun
-```
-
-## Setup
-
-1. Create a virtual environment
-
-```bash
-python -m venv venv_wcPCA
-source venv_wcPCA/bin/activate
-```
-
-2. Install the minPCA package
-
-```bash
-# Navigate to where you want to clone minPCA
-git clone https://github.com/anyafries/minPCA.git
-cd minPCA
-pip install . --extra-index-url https://download.pytorch.org/whl/cpu
-cd ..
-```
-
-3. Install remaining dependencies
-
-```diff
-! TODO: remove fancyimpute
-```
-
-```bash
-pip install -r requirements.txt
 ```
 
 ## Citation
