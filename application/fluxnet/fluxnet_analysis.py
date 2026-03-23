@@ -47,10 +47,10 @@ N_PCS = 2              # Number of PCs for Plot 4 (environment comparison)
 # Method names (as used in the results dataframes)
 BASE_METHOD = 'PCA'          # baseline method
 MAIN_METHOD = 1 # index of the main method
-COMPARISON_METHODS = ['regret', 'norm-regret', 'norm-maxRCS', 'avgcovPCA']  # minPCA method
+COMPARISON_METHODS = ['regret', 'norm-regret', 'norm-maxRCS'] # , 'avgcovPCA'
 
 # Display labels for legends
-COMPARISON_METHODS_LABEL = ['maxRegret', 'norm-maxRegret', 'norm-maxRCS', 'avgcovPCA']
+COMPARISON_METHODS_LABEL = ['maxRegret', 'norm-maxRegret', 'norm-maxRCS'] # , 'avgcovPCA'
 BASE_METHOD_LABEL = 'poolPCA'
 
 # Columns for minPCA analysis
@@ -384,10 +384,13 @@ def plot_boxplot_npcs(wc_out_df, num_components=2, y='err', average=False,
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Method')
     ax.tick_params(axis='x', rotation=90)
-    ax.text(1.07, 0, '→ better than poolPCA',
+    ax.text(1.07, 0, '→',
             transform=ax.get_yaxis_transform(),
             rotation=90, va='bottom', ha='left', fontsize=8)
-    ax.text(1.07, 0, 'worse ←',
+    ax.text(1.07, 0.14, 'better than\npoolPCA',
+            transform=ax.get_yaxis_transform(),
+            rotation=90, va='bottom', ha='left', fontsize=8)
+    ax.text(1.07, 0, 'worse than ←\npoolPCA',
             transform=ax.get_yaxis_transform(),
             rotation=90, va='top', ha='left', fontsize=8)
     plt.tight_layout()
@@ -481,6 +484,64 @@ def plot_boxplot_comparison(wc_in_df, wc_out_df, method, method_label,
         plt.close()
 
 
+# def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
+#                                  relative=True, variance=True,
+#                                  highlight_seed=None, save_path=None):
+#     """
+#     Plot a grid of boxplot comparisons for multiple methods.
+
+#     Parameters
+#     ----------
+#     methods : list of str
+#         Method names to compare against BASE_METHOD.
+#     method_labels : list of str
+#         Display labels for each method.
+#     highlight_seed : int or None
+#         If provided, overlay scatter points for the specified seed.
+#     """
+#     n_methods = len(methods)
+#     fig, axes = plt.subplots(n_methods, 2, figsize=(4, 1.2 * n_methods),
+#                               sharex=True, sharey=True)
+
+#     for row, (method, method_label) in enumerate(zip(methods, method_labels)):
+#         ax_row = axes[row]
+#         plot_boxplot_comparison(
+#             wc_in_df, wc_out_df, method, method_label,
+#             highlight_seed=highlight_seed, ax=ax_row, 
+#             variance=variance, relative=relative
+#         )
+
+#         # Add bold method label rotated vertically to the left of ylabel
+#         ax_row[0].text(-0.45, 0.5, method_label, transform=ax_row[0].transAxes,
+#                        fontsize=8, fontweight='bold', rotation=90,
+#                        va='center', ha='center')
+
+#         # Only show x-axis labels on bottom row
+#         if row < n_methods - 1:
+#             ax_row[0].set_xlabel('')
+#             ax_row[1].set_xlabel('')
+#         else:
+#             ax_row[0].set_xlabel('Number of PCs', fontsize=7)
+#             ax_row[1].set_xlabel('Number of PCs', fontsize=7)
+
+#         ylab = 'Relative ' if relative else ''
+#         ylab += r'$\Delta$ worst-case'
+#         ylab += '\n' if relative else ''
+#         ylab += '\\% expl. var.'
+#         ax_row[0].set_ylabel(ylab, fontsize=6)
+
+#     # Set column titles only on top row
+#     axes[0, 0].set_title('Source regions', fontsize=8)
+#     axes[0, 1].set_title('Target regions', fontsize=8)
+
+#     plt.tight_layout()
+#     fig.subplots_adjust(left=0.22)  # Make room for rotated method labels
+
+#     if save_path:
+#         plt.savefig(save_path, bbox_inches='tight')
+#     plt.close()
+
+
 def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
                                  relative=True, variance=True,
                                  highlight_seed=None, save_path=None):
@@ -497,39 +558,35 @@ def plot_boxplot_comparison_grid(wc_in_df, wc_out_df, methods, method_labels,
         If provided, overlay scatter points for the specified seed.
     """
     n_methods = len(methods)
-    fig, axes = plt.subplots(n_methods, 2, figsize=(4, 1.2 * n_methods),
+    fig, axes = plt.subplots(2, n_methods, figsize=(6, 2.7),
                               sharex=True, sharey=True)
 
     for row, (method, method_label) in enumerate(zip(methods, method_labels)):
-        ax_row = axes[row]
+        ax_col = axes[:, row]
         plot_boxplot_comparison(
             wc_in_df, wc_out_df, method, method_label,
-            highlight_seed=highlight_seed, ax=ax_row, 
+            highlight_seed=highlight_seed, ax=ax_col, 
             variance=variance, relative=relative
         )
-
-        # Add bold method label rotated vertically to the left of ylabel
-        ax_row[0].text(-0.45, 0.5, method_label, transform=ax_row[0].transAxes,
-                       fontsize=8, fontweight='bold', rotation=90,
-                       va='center', ha='center')
+        ax_col[0].set_title(method_label, fontsize=8)
 
         # Only show x-axis labels on bottom row
-        if row < n_methods - 1:
-            ax_row[0].set_xlabel('')
-            ax_row[1].set_xlabel('')
-        else:
-            ax_row[0].set_xlabel('Number of PCs', fontsize=7)
-            ax_row[1].set_xlabel('Number of PCs', fontsize=7)
+        ax_col[0].set_xlabel('')
+        ax_col[1].set_xlabel('Number of PCs', fontsize=7)
+        if relative:
+            ax_col[0].set_ylim(-0.85, 1)
+            ax_col[1].set_ylim(-0.85, 1)
 
-        ylab = 'Relative ' if relative else ''
-        ylab += r'$\Delta$ worst-case'
-        ylab += '\n' if relative else ''
-        ylab += '\\% expl. var.'
-        ax_row[0].set_ylabel(ylab, fontsize=6)
-
-    # Set column titles only on top row
-    axes[0, 0].set_title('Source regions', fontsize=8)
-    axes[0, 1].set_title('Target regions', fontsize=8)
+    ylab = 'Relative ' if relative else ''
+    ylab += r'$\Delta$ worst-case'
+    ylab += '\n' if relative else ''
+    ylab += '\\% expl. var.'
+    for i in range(2):
+        axes[i, 0].set_ylabel(ylab, fontsize=6)
+        label = 'Source regions' if i == 0 else 'Target regions'
+        axes[i, 0].text(-0.45, 0.5, label, transform=axes[i, 0].transAxes,
+                    fontsize=8, fontweight='bold', rotation=90,
+                    va='center', ha='center')
 
     plt.tight_layout()
     fig.subplots_adjust(left=0.22)  # Make room for rotated method labels
