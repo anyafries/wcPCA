@@ -374,7 +374,6 @@ def comparison_plot_green_red(df, title='', maxmc=False, ax=None, s=10,
                 continue
             delta_avg = m2['mean'].values[0] - m1['mean'].values[0]
             delta_wc  = m2['worst_case'].values[0] - m1['worst_case'].values[0]
-            # if delta_avg > -0.35:
             ax.plot(x_labels, [delta_avg, delta_wc],
                     ':', linewidth=0.8, color='#939393', zorder=1)
             ax.scatter(x_labels, [delta_avg, delta_wc],

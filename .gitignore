@@ -4,7 +4,8 @@
 # Data files
 application/fluxnet/data/daily.csv
 application/fluxnet/data/fluxnet_site_region_dict.csv
-application/ecosystem/data/1-1-EFPN_with_pcs_and_continents.csv
+application/ecosystem/data/InputDataMigliavacca2021.csv
+application/ecosystem/data/EFPN_with_pcs_and_continents.csv
 
 # Results and figures
 *results*
@@ -13,3 +14,8 @@ application/ecosystem/data/1-1-EFPN_with_pcs_and_continents.csv
 # Older files
 comparison/stablepca_old.py
 comparison/stablepca_algorithm.py
+*ADD_LATER*
+*fancyimpute*
+*citation*
+*bibtex*
+*two_solutions*
