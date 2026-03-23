@@ -48,8 +48,8 @@ MINPCA_COLS = [
 ENVIRONMENT_COLUMN = 'continent'
 
 # Methods to include in the main comparison line plot
-PLOT_METHODS = ['PCA(zeromean)', 'norm-minPCA', 'norm-maxRegret']
-PLOT_LABELS = ['poolPCA', 'norm-maxRCS', 'norm-maxRegret'] 
+PLOT_METHODS = ['PCA(zeromean)', 'norm-minPCA', 'norm-maxRegret', 'maxRegret']
+PLOT_LABELS = ['poolPCA', 'norm-maxRCS', 'norm-maxRegret', 'maxRegret'] 
 
 PLOT_METHODS_EXT = PLOT_METHODS + ['Average covariance', 'maxRegret']
 PLOT_LABELS_EXT = PLOT_LABELS + ['avgcovPCA', 'maxRegret']
@@ -233,7 +233,7 @@ def evaluate_methods(pca_dict, Xs_envmeanzero, X_pool_zeromean,
 
 
 def fit_ordered_minpca(covs_envmeanzero, n_components=N_COMPONENTS,
-                       n_restarts=N_RESTARTS):
+                       n_restarts=N_RESTARTS, function='minpca'):
     """Fit joint norm-minPCA and reorder components by explained variance.
 
     Returns
@@ -241,9 +241,18 @@ def fit_ordered_minpca(covs_envmeanzero, n_components=N_COMPONENTS,
     minpca_ordered : minPCA
         Fitted object with ordered components and updated cumsum_minvar_.
     """
-    m = minPCA(n_components=n_components, norm=True)
+    ind = []
+    for i in range(n_components):
+        minpcai = minPCA(n_components=i+1, norm=True, function=function)
+        minpcai = minpcai.fit(covs_envmeanzero, n_restarts=10, n_iters=100)
+        ind.append(minpcai.cumsum_minvar_[-1])
+
+    print(f"Target cumulative worst-case var for top {n_components} components: {ind}")
+    m = minPCA(n_components=n_components, norm=True, function=function)
     m.fit(covs_envmeanzero, n_restarts=n_restarts)
     m.components(ordered=True, lr=0.1, n_iters=1000)
+    print(f"Current cumulative worst-case var: {m.cumsum_minvar_[:n_components]}")
+
     return m
 
 
@@ -313,9 +322,9 @@ def plot_comparison(errs_df, methods_to_plot, labels=None, n_components=N_COMPON
                 #  borderaxespad=0,
                 frameon=False)
     ax[0].set_xlabel('Rank')
-    ax[0].set_ylabel('Average in-sample\n\% explained variance')
+    ax[0].set_ylabel('Average in-sample\n\\% explained variance')
     ax[0].set_xticks(range(1, n_components + 1))
-    ax[1].set_ylabel('\nWorst-case in-sample\n\% explained variance')
+    ax[1].set_ylabel('\nWorst-case in-sample\n\\% explained variance')
     ax[1].set_xlabel('Rank')
     ax[1].set_xticks(range(1, n_components + 1))
     ax[0].set_ylim(ymin, ymax)
@@ -342,7 +351,7 @@ def plot_cumsum_minvar(minpca_ordered, minpca_seq, n_components=N_COMPONENTS,
     plt.close()
 
 
-def plot_components(pca_obj, minpca_obj, colnames, signs=None,
+def plot_components(pca_obj, minpca_obj, colnames, signs=None, layout="v",
                     label_pca='PCA', label_minpca='minPCA',
                     row_order=None, save_path=None):
     """Bar chart comparing PCA vs minPCA loadings for first 3 PCs.
@@ -357,6 +366,9 @@ def plot_components(pca_obj, minpca_obj, colnames, signs=None,
         Feature names.
     signs : list[int]
         Sign flips for each PC (length 3).
+    layout: str
+        The layout is always the three components in a row (ie one PC per column),
+        but the bars can be vertical ("v") or horizontal ("h").
     label : str
         Legend label for minPCA.
     row_order : np.ndarray
@@ -372,7 +384,7 @@ def plot_components(pca_obj, minpca_obj, colnames, signs=None,
     reordered_minpca = np.array([minpca_obj.components()[i] for i in row_order])
     reordered_pca = np.array([pca_obj.components_.T[i] for i in row_order])
 
-    fig, axs = plt.subplots(1, 3, figsize=(5.8, 2.2), sharey=True)
+    fig, axs = plt.subplots(1, 3, figsize=(4.4, 1.8), sharey=True)
     for i in range(3):
         axs[i].barh(range(1, n_features + 1), reordered_pca[:, i],
                      alpha=0.5, label=label_pca, color='tab:red')
@@ -383,7 +395,8 @@ def plot_components(pca_obj, minpca_obj, colnames, signs=None,
         axs[i].set_yticks(range(1, n_features + 1))
         axs[i].set_yticklabels(ordered_colnames)
     
-    axs[0].set_ylabel('Ecosystem functional property')
+    axs[0].set_ylabel('Ecosystem\nfunctional property')
+    axs[0].tick_params(axis='y', labelsize=7)
     # axs[1].legend(loc='lower left')
     axs[2].legend(loc='center left', bbox_to_anchor=(1.0, 0.5), frameon=False,
                   title='Method')
@@ -464,12 +477,12 @@ def plot_combined(errs_df, methods_to_plot, labels,
                                boxstyle='round,pad=0.2'))
 
     ax_pool.set_xlabel('Rank')
-    ax_pool.set_ylabel('Average in-sample\n\% explained variance')
+    ax_pool.set_ylabel('Average in-sample\n\\% explained variance')
     ax_pool.set_xticks(range(1, n_components + 1))
     ax_pool.set_ylim(ymin, ymax)
 
     ax_wc.set_xlabel('Rank')
-    ax_wc.set_ylabel('Worst-case in-sample\n\% explained variance')
+    ax_wc.set_ylabel('Worst-case in-sample\n\\% explained variance')
     ax_wc.set_xticks(range(1, n_components + 1))
     ax_wc.set_ylim(ymin, ymax)
 
@@ -582,31 +595,46 @@ def main(rerun=False):
     else:
         print("Fitting ordered minPCA...")
         min_explained = 0
-        while min_explained < 0.36:
+        while min_explained < 0.36: # make sure we don't reach a local sol
             minpca_ordered = fit_ordered_minpca(covs_envmeanzero)
             min_explained = minpca_ordered.cumsum_minvar_[0]
         with open(ordered_cache_path, 'wb') as f:
             pickle.dump(minpca_ordered, f)
     print(f"Cumulative worst-case var (ordered): {minpca_ordered.cumsum_minvar_}")
 
+    ordered_cache_path_regret = RESULTS_DIR / f"minpca_ordered_regret_ncomp{N_COMPONENTS}_restarts{N_RESTARTS}.pkl"
+    if not rerun and ordered_cache_path_regret.exists():
+        print("Loading cached ordered maxRegret...")
+        with open(ordered_cache_path_regret, 'rb') as f:
+            minpca_ordered_regret = pickle.load(f)
+    else:
+        print("Fitting ordered maxRegret...")
+        min_explained = 0
+        while (min_explained < 0.334): # make sure we don't reach a local sol
+            print("New attempt at ordered maxRegret...")
+            minpca_ordered_regret = fit_ordered_minpca(covs_envmeanzero, function='maxregret')
+            min_explained = minpca_ordered_regret.cumsum_minvar_[0]
+        with open(ordered_cache_path_regret, 'wb') as f:
+            pickle.dump(minpca_ordered_regret, f)
+    print(f"Cumulative worst-case var (ordered maxRegret): {minpca_ordered_regret.cumsum_minvar_}")
+
     # ---- Plot 4 & 5: Component loading comparisons ----
     print("Generating component plots...")
-    plot_components(
-        fitted_objects['pca_zeromean'], minpca_ordered,
-        list(X_envzeromean_df.columns),
-        signs=[-1, 1, -1],
-        label_pca='poolPCA',
-        label_minpca='norm-maxRCS',
-        save_path=FIGURES_DIR / "ecosystem_components_zeromean.pdf"
-    )
-    plot_components(
-        fitted_objects['pca_poolscale'], minpca_ordered,
-        list(X_envzeromean_df.columns),
-        signs=[-1, 1, -1],
-        label_pca=r'poolPCA$^*$',
-        label_minpca='norm-maxRCS',
-        save_path=FIGURES_DIR / "ecosystem_components_poolscale.pdf"
-    )
+    for poolpca_label, pca_key in zip(['poolPCA', r'poolPCA$^*$'], ['pca_zeromean', 'pca_poolscale']):
+        for minpca_label, minpca_obj, save_suffix in zip(
+            ['norm-maxRCS', 'norm-maxRegret'],
+            [minpca_ordered, minpca_ordered_regret],
+            ['norm-maxRCS', 'norm-maxRegret']
+        ):
+            plot_components(
+                fitted_objects[pca_key], minpca_obj,
+                list(X_envzeromean_df.columns),
+                signs=[-1, 1, -1] if minpca_label == 'norm-maxRCS' else [-1, -1, 1],
+                layout="v" if minpca_label == 'norm-maxRCS' else "h",
+                label_pca=poolpca_label,
+                label_minpca=minpca_label,
+                save_path=FIGURES_DIR / f"ecosystem_components_{save_suffix}_{pca_key}.pdf"
+            )
 
     # ---- Plot 6: Combined comparison + components ----
     print("Generating combined plot...")
