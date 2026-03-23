@@ -216,7 +216,7 @@ def make_figure(df):
         rotation=90, va='bottom', ha='left', fontsize=8
     )
     ax[1].text(
-        1.07, 0, r'maxRCS better $\leftarrow$',
+        1.07, 0, r'maxRCS is better $\leftarrow$',
         transform=ax[1].get_yaxis_transform(),
         rotation=90, va='top', ha='left', fontsize=8
     )

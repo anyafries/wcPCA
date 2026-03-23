@@ -179,7 +179,7 @@ def make_figure(df, relative=True):
 
     # Add annotation
     ax.text(
-        1.1, 0, 'maxRCS\nbetter \u2190\u2192 worse',
+        1.1, 0, 'maxRCS is\nbetter \u2190\u2192 worse',
         transform=ax.get_yaxis_transform(),
         rotation=90, va='center', ha='center', fontsize=8
     )
