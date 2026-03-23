@@ -81,7 +81,7 @@ def load_and_preprocess_data():
     X_envzeromean_df : pd.DataFrame
     continents : pd.Series
     """
-    df = pd.read_csv(DATA_DIR / "1-1-EFPN_with_pcs_and_continents.csv", index_col=0)
+    df = pd.read_csv(DATA_DIR / "EFPN_with_pcs_and_continents.csv", index_col=0)
     continents = df[ENVIRONMENT_COLUMN]
 
     minpca_df = df[MINPCA_COLS].copy()

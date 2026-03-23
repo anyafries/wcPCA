@@ -69,18 +69,18 @@ See [`comparison/`](https://github.com/anyafries/wcPCA/tree/main/comparison) for
 
 ### Applications
 
-Section 6.1. correspond to the directory `fluxnet/`. 
-The instructions for accessing data are coming shortly. Once they are there,
-running the following produces Figure 8, Figure C.i, and Figure C.ii.
+Section 6.1. corresponds to the directory `fluxnet/`. 
+Data are available upon reasonable request.
+Running the following produces Figure 8, Figure C.i, and Figure C.ii.
 
 ```bash
 cd application/fluxnet
 python fluxnet_analysis.py          # or --rerun
 ```
 
-Section 6.2. correspond to the directory `ecosystem/`. 
-The instructions for accessing data are coming shortly. Once they are there,
-running the following produces Figure 9 and Figure C.iii.
+Section 6.2. corresponds to the directory `ecosystem/`. 
+Data is available from the original paper of [Migliavacca et al. (2021)](https://www.nature.com/articles/s41586-021-03939-9): navigate to https://zenodo.org/records/5153538, where their code and data is stored. Download `data/InputDataMigliavacca2021.csv` and copy this to `applications/ecosystem/data`. Then, run `prepare_data.R` to add continent information.
+Thereafter, running the following produces Figure 9 and Figure C.iii.
 
 ```bash
 cd ../ecosystem
@@ -91,12 +91,17 @@ python ecosystem_analysis.py        # or --rerun
 
 If you use this code, please cite:
 
-```diff
-! TODO: add
+```bibtex
+@misc{Fries2026,
+      title={Worst-case low-rank approximations}, 
+      author={Anya Fries and Markus Reichstein and David Blei and Jonas Peters},
+      year={2026},
+      eprint={2603.11304},
+      archivePrefix={arXiv},
+      primaryClass={stat.ML},
+      url={https://arxiv.org/abs/2603.11304}, 
+}
 ```
-
-<!--```bibtex
-```-->
 
 ## License
 
