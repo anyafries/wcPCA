@@ -1,6 +1,6 @@
-# Worst-case low-rank approximation (wcPCA)
+# Worst-case low-rank approximations (wcPCA)
 
-This repository contains the code for the research paper *Worst-case low rank approximation*.
+This repository contains the code for the research paper [Worst-case low-rank approximations](https://arxiv.org/abs/2603.11304).
 
 ## Setup
 
