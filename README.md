@@ -71,7 +71,7 @@ See [`comparison/`](https://github.com/anyafries/wcPCA/tree/main/comparison) for
 
 Section 6.1. corresponds to the directory `fluxnet/`. 
 Data are available upon reasonable request.
-Running the following produces Figure 8, Figure C.i, and Figure C.ii.
+Running the following produces Figures 1, 8, C.i, and C.ii.
 
 ```bash
 cd application/fluxnet
