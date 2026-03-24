@@ -11,7 +11,7 @@ python -m venv venv_wcPCA
 source venv_wcPCA/bin/activate
 ```
 
-2. Install the minPCA package
+2. Install the [minPCA package](https://github.com/anyafries/minPCA)
 
 ```bash
 # Navigate to where you want to clone minPCA
